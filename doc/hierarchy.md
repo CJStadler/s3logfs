@@ -10,6 +10,7 @@
   - class S3Bucket
     - init(bucket_name)
     - get_object(key) -> bytes
+    - get_object(key, offset, numBytes) -> bytes
     - put_object(key, bytes)
   - module fs
     - current_checkpoint
