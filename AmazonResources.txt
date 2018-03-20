@@ -1,0 +1,3 @@
+Amazon Management Console
+https://447096544622.signin.aws.amazon.com/console
+
