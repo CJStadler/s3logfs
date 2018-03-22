@@ -1,7 +1,11 @@
 # Overview
 Most of the notes about data structures below is based on "The Design and Implementation of a Log-Structured File System" paper by Rosenblum/Ousterhout. It is based on a Log-Structured FS called Sprite LFS. I have/will review a few other implementations and make notes below as to how they differ. 
 
-CheckpointRegion 
+Superblock (fixed location - not part of log structure)
+----------------------
+This is likely still needed to define the type and size of our file system for the OS (and likely FUSE) to make use of. This should be stored in the S3 bucket as a data structure.
+
+CheckpointRegion (fixed location - not part of log structure)
 ----------------------
 The CheckpointRegion data structure will hold the the inode to imap relationship. So each file would have a unique Inode value, that will never change, but the Inode's address can change as new versions of it are written to the log file structure. Each time a new Inode is written a new imap object is also written. The imap's unique ID never changes, but the address pointer to the most recent Inode is updated, as well as the verison of the imap if the file is truncated/deleted.
 
@@ -13,10 +17,11 @@ The CheckpointRegion (in RAM) is the current state of the file sytsem, though it
 
 On some set schedule, or when a specific amount of data has been writen to the file system, the CheckpointRegion will need to be written to storage as a checkpoint. All data from before the checkpoint should be considered fully committed to memory, and after a re-mount or crash recovery we should be able to load the CheckpointRecovery from disk to memroy, then read ahead in the log (FS) and update the CR structure to reflect writes that were successful to disk, and remove elements from the file system that did not complete, then mount the file system for use.
 
+Sprite LFS uses a 30 seconds till Checkpoint process.
+
 InodeMap
 ----------------------
 The InodeMap will contain the the segment & offset to the current Inode for a file. It will maintain a version number to reflect if the Inode has been deleted/truncated for cleanup detection.
-
 
 Inode
 ----------------------
@@ -55,6 +60,7 @@ Segment
   - SegmentSummary
   - N Blocks (data, inode, imap, etc) until we fill the needed segment size
 ```
+Sprite LFS uses 512K or 1MB segments per the paper.
 
 SegmentSummary
 ----------------------
@@ -65,14 +71,19 @@ The Sprite LFS implementation stores the following for each data block in the se
 - imap version (incremented value, only incremented when a file is deleted and/or truncated)
 - offset in segment to data block
 
-The file id combined with the imap version represent a unique ID, if these values do not match the current inode/imap version in the CheckpointRecovery structure the data block is considered junk an can be deleted. 
+The file id combined with the imap version represent a unique ID, if these values do not match the current inode/imap version in the CheckpointRecovery structure the data block is considered junk an can be deleted. If we decide to implement versioning, we can then use a date/time stamp and age to determine when we remove blocks.
+
+Sprite LFS also has a SegmentUsageTable, as a method by which to identify Segments that can be cleaned. The usage table keeps track of the number of live blocks in a given segment and the most recent modified time. Sprite LFS has this data structure as separate from the SegmentSummary data structure but I believe they can be combined.
 
 ```
 SegmentSummary
-  - array of SSDataBlock elements stored in their offset position
-  - Ex: data block at offset 10, is in array position 10
+  - number of live blocks
+  - last modified of any data block (3 inodes in segment, greatest last modified from these files)
+  - array of SSData elements stored in their offset position
+  - Note: data block at offset 10, is in array position 10
 
 SSData
   - file number
   - imap version
+  - last modified
 ```
