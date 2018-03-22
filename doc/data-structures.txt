@@ -1,0 +1,45 @@
+Most of the notes about data structures below is based on "The Design and Implementation of a Log-Structured File System" paper by Rosenblum/Ousterhout. It is based on a Log-Structured FS called Sprite LFS. I have/will review a few other implementations and make notes below as to how they differ. 
+
+CheckpointRegion 
+----------------------
+The CheckpointRegion data structure will hold the the inode to imap relationship. So each file would have a unique Inode value, that will never change, but the Inode's address can change as new versions of it are written to the log file structure. Each time a new Inode is written a new imap object is also written. The imap's unique ID never changes, but the address pointer to the most recent Inode is updated, as well as the verison of the imap if the file is truncated/deleted.
+
+Inode ID (file id) > Imap Object > Inode Address in Storage
+
+So the CheckpointRegion will have an index of all Inode to all most recent Imap Objects in memory.
+
+The CheckpointRegion (in RAM) is the current state of the file sytsem, though it may not reflect all data on disk as it will also represent information in the write buffer. 
+
+On some set schedule, or when a specific amount of data has been writen to the file system, the CheckpointRegion will need to be written to storage as a checkpoint. All data from before the checkpoint should be considered fully committed to memory, and after a re-mount or crash recovery we should be able to load the CheckpointRecovery from disk to memroy, then read ahead in the log (FS) and update the CR structure to reflect writes that were successful to disk, and remove elements from the file system that did not complete, then mount the file system for use.
+
+InodeMap
+----------------------
+The InodeMap will contain the the segment & offset to the current Inode for a file. It will maintain a version number to reflect if the Inode has been deleted/truncated for cleanup detection.
+
+
+Inode
+----------------------
+The Inode will represent a file, and all of its required data points for tracking the status and use of the file and its data.
+
+Elements such as type, owner, permissions, date created/modified, direct/indirect data block addresses as well as a number of other fields. To flesh this out we will want to review the current Inode structure in common FS used in linux, to make sure we support most file system functionality, as well ad make adjustments to support the type of file system we are implementing.
+
+IndirectBlock
+----------------------
+The IndirectBlock is an array of segment and offset addresses to data blocks which will fully contain pointers to other data blocks. Each Inode will have a number of direct data block addresses, but once those are exceeded it will transition into IndirectBlocks to extend the file system. 
+
+I think we should also include in this data structure a level, which will represent how many levels we will need to go to get to actual data blocks. So if it says 2, then it would be Inode > IndirectBlockAddress > IndirectBlockAddress > DataAddress. This way the data structure can be reused for multiple layers as needed.
+
+Segment
+----------------------
+The Segment data structure will be an array of byte blocks of page size (ex: 4096). The first (offset 0) will be the SegmentSummary which will detail all of the data blocks in the Segment like a table of contents, and provide information on how to find them and validate they are live. See SegmentSummary data structure.
+
+SegmentSummary
+----------------------
+The SegmentSummary will be used by the garbage collection and cleanup processes to determine if a data block is still live within a segment. Generally located in the first block, or offset 0 of each segment.
+
+The Sprite LFS implementation stores the following for each data block in the segment ...
+- file id (aka inode id)
+- imap version (incremented value, only incremented when a file is deleted and/or truncated)
+- offset in segment to data block
+
+The file id combined with the imap version represent a unique ID, if these values do not match the current inode/imap version in the CheckpointRecovery structure the data block is considered junk an can be deleted. 
