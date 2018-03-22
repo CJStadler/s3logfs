@@ -24,15 +24,37 @@ The Inode will represent a file, and all of its required data points for trackin
 
 Elements such as type, owner, permissions, date created/modified, direct/indirect data block addresses as well as a number of other fields. To flesh this out we will want to review the current Inode structure in common FS used in linux, to make sure we support most file system functionality, as well ad make adjustments to support the type of file system we are implementing.
 
+BlockAddress
+----------------------
+The BlockAddress structure is how we will store addresses. When the data is in S3, the structure is going to be an integer for the Segment and an integer for the offset in the segment to the data block. When we start talking about cache, we could have an array of Segments in memory, we would use the block address data to scan the in memory array for a Segment first, if it is not found (miss) we then go to S3, load it into memory, then read the data from there.
+
+```
+BlockAddress
+  - Segment ID
+  - Offset
+```
+
 IndirectBlock
 ----------------------
 The IndirectBlock is an array of segment and offset addresses to data blocks which will fully contain pointers to other data blocks. Each Inode will have a number of direct data block addresses, but once those are exceeded it will transition into IndirectBlocks to extend the file system. 
 
 I think we should also include in this data structure a level, which will represent how many levels we will need to go to get to actual data blocks. So if it says 2, then it would be Inode > IndirectBlockAddress > IndirectBlockAddress > DataAddress. This way the data structure can be reused for multiple layers as needed.
 
+```
+IndirectBlock
+  - level
+  - array of DataBlock addresses (order in array defines order in memory)
+```
+
 Segment
 ----------------------
 The Segment data structure will be an array of byte blocks of page size (ex: 4096). The first (offset 0) will be the SegmentSummary which will detail all of the data blocks in the Segment like a table of contents, and provide information on how to find them and validate they are live. See SegmentSummary data structure.
+
+```
+Segment
+  - SegmentSummary
+  - N Blocks (data, inode, imap, etc) until we fill the needed segment size
+```
 
 SegmentSummary
 ----------------------
@@ -44,3 +66,13 @@ The Sprite LFS implementation stores the following for each data block in the se
 - offset in segment to data block
 
 The file id combined with the imap version represent a unique ID, if these values do not match the current inode/imap version in the CheckpointRecovery structure the data block is considered junk an can be deleted. 
+
+```
+SegmentSummary
+  - array of SSDataBlock elements stored in their offset position
+  - Ex: data block at offset 10, is in array position 10
+
+SSData
+  - file number
+  - imap version
+```
