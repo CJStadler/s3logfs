@@ -32,6 +32,7 @@ InodeMap
   - Data Offset
   - Version
 ```
+INodeMap now becomes a woring index to both the directory lookup, and data lookup for a file.
 
 Inode
 ----------------------
