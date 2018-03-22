@@ -1,9 +1,9 @@
 # Overview
-Most of the notes about data structures below is based on "The Design and Implementation of a Log-Structured File System" paper by Rosenblum/Ousterhout. It is based on a Log-Structured FS called Sprite LFS. I have/will review a few other implementations and make notes below as to how they differ. 
+Most of the notes about data structures below is based on "The Design and Implementation of a Log-Structured File System" paper by Rosenblum/Ousterhout. It is based on a Log-Structured FS called Sprite LFS. I have/will review a few other implementations and make notes below as to how they differ. Added some design information from a Harvard presentation http://www.eecs.harvard.edu/~cs161/notes/lfs.pdf.
 
 Superblock (fixed location - not part of log structure)
 ----------------------
-This is likely still needed to define the type and size of our file system for the OS (and likely FUSE) to make use of. This should be stored in the S3 bucket as a data structure.
+This is likely still needed to define the type and size of our file system for the OS (and likely FUSE) to make use of. This should be stored in the S3 bucket as a data structure. Technically, we could just combine the Superblock into the CheckpointRegion.
 
 CheckpointRegion (fixed location - not part of log structure)
 ----------------------
@@ -21,7 +21,17 @@ Sprite LFS uses a 30 seconds till Checkpoint process.
 
 InodeMap
 ----------------------
-The InodeMap will contain the the segment & offset to the current Inode for a file. It will maintain a version number to reflect if the Inode has been deleted/truncated for cleanup detection.
+The InodeMap will contain the the segment & offset to the current Inode for a file. It will maintain a version number to reflect if the Inode has been deleted/truncated for cleanup detection. It could also contain the current segment & offset for the Directory inode entry for the file.
+
+```
+InodeMap
+  - InodeID
+  - Directory Segment
+  - Directory Offset
+  - Data Segment
+  - Data Offset
+  - Version
+```
 
 Inode
 ----------------------
@@ -72,6 +82,12 @@ The Sprite LFS implementation stores the following for each data block in the se
 - offset in segment to data block
 
 The file id combined with the imap version represent a unique ID, if these values do not match the current inode/imap version in the CheckpointRecovery structure the data block is considered junk an can be deleted. If we decide to implement versioning, we can then use a date/time stamp and age to determine when we remove blocks.
+
+Harvard LFS Materials shows a slightly different implementation ...
+ - file id (inode id)
+ - offset in segment
+
+It then determines live blocks of data by using the inode number to read the current inode via the inodemap. It then checks if it is the same block adresss. With our implementation this would be as simple as checking if the segment id in the inode we read matches the segment id for the segment we are going through the segment summary to detect bad blocks. If the segment ID is different, then the inodemap brought us to a newer segment for the given data block.
 
 Sprite LFS also has a SegmentUsageTable, as a method by which to identify Segments that can be cleaned. The usage table keeps track of the number of live blocks in a given segment and the most recent modified time. Sprite LFS has this data structure as separate from the SegmentSummary data structure but I believe they can be combined.
 
