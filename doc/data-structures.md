@@ -1,5 +1,5 @@
 # Overview
-Most of the notes about data structures below is based on "The Design and Implementation of a Log-Structured File System" paper by Rosenblum/Ousterhout. It is based on a Log-Structured FS called Sprite LFS. I have/will review a few other implementations and make notes below as to how they differ. Added some design information from a Harvard presentation http://www.eecs.harvard.edu/~cs161/notes/lfs.pdf.
+Most of the notes about data structures below is based on "The Design and Implementation of a Log-Structured File System" paper by Rosenblum/Ousterhout. It is based on a Log-Structured FS called Sprite LFS. I have/will review a few other implementations and make notes below as to how they differ. Added some design information from a Harvard presentation http://www.eecs.harvard.edu/~cs161/notes/lfs.pdf. University of Wisconsin resource: http://pages.cs.wisc.edu/~remzi/Classes/537/Fall2008/Notes/file-lfs.txt
 
 Superblock (fixed location - not part of log structure)
 ----------------------
