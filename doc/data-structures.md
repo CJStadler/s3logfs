@@ -1,3 +1,4 @@
+# Overview
 Most of the notes about data structures below is based on "The Design and Implementation of a Log-Structured File System" paper by Rosenblum/Ousterhout. It is based on a Log-Structured FS called Sprite LFS. I have/will review a few other implementations and make notes below as to how they differ. 
 
 CheckpointRegion 
