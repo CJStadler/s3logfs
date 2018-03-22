@@ -5,6 +5,6 @@ Description:
 
 
 File System Requirements:
- - Python 2.7
+ - Python 3.X
  - Boto3 (Amazon Python SDK)
    https://aws.amazon.com/sdk-for-python/
