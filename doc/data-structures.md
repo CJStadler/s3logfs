@@ -26,11 +26,7 @@ The InodeMap will contain the the segment & offset to the current Inode for a fi
 ```
 InodeMap
   - InodeID
-  - Directory Segment
-  - Directory Offset
-  - Data Segment
-  - Data Offset
-  - Version
+  - IMapBlockAddress
 ```
 INodeMap now becomes a woring index to both the directory lookup, and data lookup for a file.
 
@@ -46,8 +42,8 @@ The BlockAddress structure is how we will store addresses. When the data is in S
 
 ```
 BlockAddress
-  - Segment ID
-  - Offset
+  - SegmentID (6 byte unsigned long long)
+  - Offset (2 byte unsigned short)
 ```
 
 IndirectBlock
@@ -61,6 +57,8 @@ IndirectBlock
   - level
   - array of DataBlock addresses (order in array defines order in memory)
 ```
+level will let the class know how deep it will need to go to get to actual data, and how to calculate which branch to go down 
+in the addresses to get to it. 
 
 Segment
 ----------------------
