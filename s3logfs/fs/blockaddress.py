@@ -1,3 +1,5 @@
+import struct
+
 class BlockAddress:
 
   # BlockAddress constructor accepts either ...
@@ -25,3 +27,10 @@ class BlockAddress:
     b1 = (self.segmentid).to_bytes(6, byteorder='little', signed=False)
     b2 = (self.offset).to_bytes(2, byteorder='little', signed=False)
     return b1[0:6] + b2[0:2]
+  
+  # set's a block address from bytes
+  def from_bytes(self, data):
+      # first 6 bytes is segmentid (placed in unsigned long long)
+      self.segmentid = struct.unpack("<Q", data[0:6] + b'\x00\x00')[0]
+      # last 2 bytes is offset (placed in unsigned short)
+      self.offset = struct.unpack("<H", data[6:8])[0]
