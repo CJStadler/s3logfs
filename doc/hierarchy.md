@@ -37,13 +37,13 @@
       - type (file/directory)
       - blocks (how should we store this?)
     - class Log
-      - read(segment_number, offset, length) -> bytes
-      - write(bytes) -> (segment_number, offset)
+      - read(segment_number, start_block_number, number of blocks) -> bytes
+      - write(bytes) -> (segment_number, block_number)
         - when the current segment is full, send it to S3 and start a new one.
       - current_segment (for writing)
     - class Segment
       - init(bytes)
       - to_bytes() -> bytes
-      - read(offset, length) -> bytes
+      - read(block_number, number of blocks) -> bytes
       - write(bytes) -> offset (always appends)
       - free_space() -> int
