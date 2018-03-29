@@ -43,7 +43,8 @@ class ReadWriteSegment(Segment):
     '''
     This class represents a segment which is not yet complete, and so can
     be written to. The data is therefore represented as a bytearray, which is
-    mutable. When the segment is complete
+    mutable. When the segment is complete it should be converted into a
+    ReadOnlySegment.
     '''
 
     def __init__(self):

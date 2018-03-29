@@ -4,7 +4,7 @@ from s3logfs.fs import Log, ReadOnlySegment, ReadWriteSegment
 
 
 class TestLog(TestCase):
-    def test_read(self):
+    def test_read_from_previous_segment(self):
         segment_size = 4096
         last_segment_number = 123
         segment_number = 123
@@ -15,11 +15,14 @@ class TestLog(TestCase):
         block = ReadOnlySegment.BLOCK_SIZE * b'a'
         offset = block_number * ReadOnlySegment.BLOCK_SIZE
         seg_bytes[offset:offset + ReadOnlySegment.BLOCK_SIZE] = block
-        bucket.get_object.return_value = bytes(seg_bytes)
+        bucket.get_segment.return_value = bytes(seg_bytes)
         result = log.read(segment_number, block_number)
         self.assertEqual(result, block)
-        bucket.get_object.assert_called_once_with(
-            'segment_{}'.format(segment_number))
+        bucket.get_segment.assert_called_once_with(segment_number)
+
+    def test_read_from_current_segment(self):
+        # TODO
+        pass
 
     def test_write_when_segment_not_complete(self):
         last_segment_number = 123
@@ -43,7 +46,7 @@ class TestLog(TestCase):
         self.assertEqual(block_address,
                          (last_segment_number + 1, blocks_count - 1))
         self.assertEqual(log.last_segment_number, last_segment_number + 1)
-        bucket.put_object.assert_called_once_with(
-            'segment_{}'.format(last_segment_number),
+        bucket.put_segment.assert_called_once_with(
+            last_segment_number + 1,
             blocks_count * block
         )

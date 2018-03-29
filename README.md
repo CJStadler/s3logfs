@@ -10,3 +10,23 @@ File System Requirements:
  - Python 3.X
  - Boto3 (Amazon Python SDK)
    https://aws.amazon.com/sdk-for-python/
+
+## Testing
+Tests are divided into two groups: unit and integration. The main difference is
+that unit tests mock out external requests (primarily to S3), while integration
+tests do not. The purpose of unit tests is to fully test behavior in isolation,
+while integration tests are for confirmation that units work together and with
+external dependencies correctly
+
+Integration tests require that your environment be configured to connect to S3,
+and that you have access to a bucket named "s3logfs-integration-testing".
+Integration tests are also much slower, and so should likely be run less
+frequently during development.
+
+The two suites can be run separately or together:
+```sh
+python3 -m unittest discover -s tests/unit/
+python3 -m unittest discover -s tests/integration/
+python3 -m unittest # Run all tests
+python3 -m unittest tests.unit.fs.test_inode # Run specific module
+```
