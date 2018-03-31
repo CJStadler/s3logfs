@@ -1,11 +1,10 @@
 from struct import Struct
 from array import array
-
+from .blockaddress import BlockAddress
 
 class INode:
     NUMBER_OF_BLOCKS = 16
-    STRUCT_FORMAT = 'ILI????LLL{}L{}H'.format(
-        NUMBER_OF_BLOCKS, NUMBER_OF_BLOCKS)
+    STRUCT_FORMAT = 'ILI????LLL' # Plus block addresses
     STRUCT = Struct(STRUCT_FORMAT)
 
     def __init__(self):
@@ -19,13 +18,14 @@ class INode:
         self.last_accessed_at = 0
         self.last_modified_at = 0
         self.status_last_changed_at = 0
-        self.block_addresses = self.NUMBER_OF_BLOCKS * [(0, 0)]
+        self.block_addresses = self.NUMBER_OF_BLOCKS * [BlockAddress(0, 0)]
 
     @classmethod
     def from_bytes(klass, bytes):
-        unpacked_values = klass.STRUCT.unpack(bytes)
+        struct_bytes = bytes[:klass.STRUCT.size]
+        addresses_bytes = bytes[klass.STRUCT.size:]
+        unpacked_values = klass.STRUCT.unpack(struct_bytes)
 
-        segment_and_block_numbers = klass.NUMBER_OF_BLOCKS * 2 * [0]
         inode = klass()
         (
             inode.inode_number,
@@ -37,26 +37,19 @@ class INode:
             inode.executable,
             inode.last_accessed_at,
             inode.last_modified_at,
-            inode.status_last_changed_at,
-            *segment_and_block_numbers
+            inode.status_last_changed_at
         ) = unpacked_values
 
+        address_size = len(addresses_bytes) // klass.NUMBER_OF_BLOCKS
         for i in range(klass.NUMBER_OF_BLOCKS):
-            segment_number = segment_and_block_numbers[i]
-            block_number = segment_and_block_numbers[klass.NUMBER_OF_BLOCKS + i]
-            inode.block_addresses[i] = (segment_number, block_number)
+            offset = i * address_size
+            address_bytes = addresses_bytes[offset:offset + address_size]
+            inode.block_addresses[i] = BlockAddress(address_bytes)
 
         return inode
 
     def to_bytes(self):
-        segment_and_block_numbers = self.NUMBER_OF_BLOCKS * 2 * [0]
-
-        for i in range(self.NUMBER_OF_BLOCKS):
-            (segment_number, block_number) = self.block_addresses[i]
-            segment_and_block_numbers[i] = segment_number
-            segment_and_block_numbers[self.NUMBER_OF_BLOCKS + i] = block_number
-
-        return self.STRUCT.pack(
+        struct_bytes = self.STRUCT.pack(
             self.inode_number,
             self.size,
             self.hard_links,
@@ -66,6 +59,13 @@ class INode:
             self.executable,
             self.last_accessed_at,
             self.last_modified_at,
-            self.status_last_changed_at,
-            *segment_and_block_numbers
+            self.status_last_changed_at
         )
+
+        bytes = bytearray(struct_bytes)
+
+        for i in range(self.NUMBER_OF_BLOCKS):
+            address = self.block_addresses[i]
+            bytes.extend(address.to_bytes())
+
+        return bytes
