@@ -19,13 +19,19 @@ class FuseApi(FUSELL):
     def init(self, userdata, conn):
         
         # init CheckpointRegion
-        self._CR = CheckpointRegion("TEST")
+# BCH - need to update this to get bucket from arguments
+        self._CR = CheckpointRegion()
 
         # init S3 bucket
         self._bucket = S3Bucket(self._CR.s3_bucket_name);
 
         # init Log
         self._log = Log(self._CR.segment_count, self._bucket, self._CR.block_size, self._CR.segment_size)
+
+        # need to init default root structure in files
+        # 1. empty directory data block
+        # 2. directory inode block
+        # 3. update self._CR inode_map with inodeid to BlockAddress in log 
 
     def destroy(self, userdata):
         """Clean up filesystem
