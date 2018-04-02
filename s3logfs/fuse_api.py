@@ -1,10 +1,12 @@
 import errno
 
-from .fs.checkpoint import CheckpointRegion
-from s3_bucket import S3Bucket
-from .fs.log import Log
+from .fs import CheckpointRegion
+from .s3_bucket import S3Bucket
+from .fs import Log
+from .fs import INode
+from .fs import BlockAddress
 
-from fusell import FUSELL
+from .fusell import FUSELL
 
 
 class FuseApi(FUSELL):
