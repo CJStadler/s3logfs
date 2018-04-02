@@ -1,7 +1,7 @@
 import unittest
 
 from time import time
-from s3logfs.fs import INode
+from s3logfs.fs import INode, BlockAddress
 
 
 class TestINode(unittest.TestCase):
@@ -9,7 +9,7 @@ class TestINode(unittest.TestCase):
         self.assertEqual(INode.NUMBER_OF_BLOCKS, 16)
 
     def test_struct_format(self):
-        self.assertEqual(INode.STRUCT_FORMAT, 'ILI????LLL16L16H')
+        self.assertEqual(INode.STRUCT_FORMAT, 'ILI????LLL')
 
     def test_to_and_from_bytes(self):
         inode = INode()
@@ -24,7 +24,8 @@ class TestINode(unittest.TestCase):
         inode.last_accessed_at = t - 1
         inode.last_modified_at = t - 2
         inode.status_last_changed_at = t - 3
-        inode.block_addresses[INode.NUMBER_OF_BLOCKS - 1] = (789, 99)
+        inode.block_addresses[INode.NUMBER_OF_BLOCKS - 1] = \
+            BlockAddress(789, 99)
         out_bytes = inode.to_bytes()
 
         new_inode = INode.from_bytes(out_bytes)

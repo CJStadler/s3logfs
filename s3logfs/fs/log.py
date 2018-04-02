@@ -1,6 +1,6 @@
-from .log import ReadOnlySegment, ReadWriteSegment
-from .log import BlockAddress
 from collections import defaultdict
+from .segment import ReadOnlySegment, ReadWriteSegment
+from .blockaddress import BlockAddress
 
 class Log:
     """
@@ -83,4 +83,3 @@ class Log:
 
         # return BlockAddress for segment/block_number
         return blockAddr
-
