@@ -1,5 +1,5 @@
 from .segment import ReadOnlySegment, ReadWriteSegment
-
+from .blockaddress import BlockAddress
 
 class Log:
     """
@@ -15,10 +15,14 @@ class Log:
         self._bucket = bucket
         self._current_segment = ReadWriteSegment()
 
-    def read(self, segment_number, block_number):
-        seg_bytes = self._bucket.get_segment(segment_number)
-        segment = ReadOnlySegment(seg_bytes)
-        return segment.read(block_number)
+    def read(self, block_address):
+        if block_address.segmentid == self.last_segment_number + 1:
+            segment = self._current_segment
+        else:
+            seg_bytes = self._bucket.get_segment(block_address.segmentid)
+            segment = ReadOnlySegment(seg_bytes)
+
+        return segment.read(block_address.offset)
 
     def write(self, block_bytes):
         block_number = self._current_segment.write(block_bytes)
@@ -29,7 +33,7 @@ class Log:
         elif len(self._current_segment) == self._max_segment_size:
             self._put_current_segment()
 
-        return (segment_number, block_number)
+        return BlockAddress(segment_number, block_number)
 
     def _put_current_segment(self):
         self.last_segment_number += 1
