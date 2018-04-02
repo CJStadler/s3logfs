@@ -3,6 +3,7 @@ import errno
 from fusell import FUSELL
 
 class s3LogFS(FUSELL):
+
     def __init__(self, mountpoint, bucket_name, encoding='utf-8'):
         '''
         This overrides the FUSELL __init__() so that we can set the bucket.
@@ -11,10 +12,14 @@ class s3LogFS(FUSELL):
         super().__init__(mountpoint, encoding=encoding)
 
     def init(self, userdata, conn):
-        """Initialize filesystem
+        """Initialize filesystem"""
 
-        There's no reply to this method
-        """
+        # init Checkpoint Region
+        self.CR = CheckpointRegion()
+    
+        # init Log
+        self.log = Log()
+
         pass
 
     def destroy(self, userdata):

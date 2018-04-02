@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+import sys
 
 
 class Segment(ABC):
@@ -7,11 +8,14 @@ class Segment(ABC):
     Instead, use either ReadOnlySegment or ReadWriteSegment.
     '''
 
-    # Should this be constant?
-    BLOCK_SIZE = 512
-
     def __len__(self):
         return len(self.bytes())
+
+    def getId(self):
+        return self._id
+
+    def getType(self):
+        return self._type
 
     @abstractmethod
     def bytes(self):
@@ -21,10 +25,13 @@ class Segment(ABC):
         '''
         raise NotImplementedError
 
+    @abstractmethod
     def read(self, block_number):
-        offset = block_number * self.BLOCK_SIZE
-        return self.bytes()[offset:offset + self.BLOCK_SIZE]
-
+        '''
+        This must be implemented by every child class. Making this abstract
+        allows different representations of the bytes to be used.
+        '''
+        raise NotImplementedError
 
 class ReadOnlySegment(Segment):
     '''
@@ -32,11 +39,19 @@ class ReadOnlySegment(Segment):
     a memoryview, which allows us to take slices of the data without copying.
     '''
 
-    def __init__(self, bytes):
+    def __init__(self, segment_id, block_size, segment_size, bytes):
+        self._id = segment_id 
+        self._type = "RO"
+        self._block_size = block_size
+        self._segment_size = segment_size
         self._memoryview = memoryview(bytes)
 
     def bytes(self):
         return self._memoryview
+
+    def read(self, block_number):
+        offset = block_number * self._block_size
+        return bytes(self._memoryview[offset:offset + self._block_size])
 
 
 class ReadWriteSegment(Segment):
@@ -47,25 +62,36 @@ class ReadWriteSegment(Segment):
     ReadOnlySegment.
     '''
 
-    def __init__(self):
-        self._next_block_number = 0
+    def __init__(self, segment_id, block_size=4096, segment_size=512):
+        self._id = segment_id
+        self._type = "RW"
+        self._block_size = block_size
+        self._segment_size = segment_size
+        self._next_block_number = 1        # block 0 will contain segment summary
         self._bytearray = bytearray()
 
     def bytes(self):
-        return self._bytearray
+        return bytes(self._bytearray)
 
     def to_read_only(self):
-        return ReadOnlySegment(self._bytearray)
+        # i think we should pad the segment to zero's if we force the segment to write early
+        return ReadOnlySegment(self._id, self._block_size, self._segment_size, self._bytearray)
 
     def write(self, block_bytes):
-        if len(block_bytes) > self.BLOCK_SIZE:
+        if len(block_bytes) > self._block_size:
             raise RuntimeError('Segment must be written to one block at a time')
 
         self._bytearray.extend(block_bytes)
-        if len(block_bytes) < self.BLOCK_SIZE:
-            padding = (self.BLOCK_SIZE - len(block_bytes)) * [0]
+
+        if len(block_bytes) < self._block_size:
+            padding = (self._block_size - len(block_bytes)) * [0]
             self._bytearray.extend(padding)
 
         block_number = self._next_block_number
         self._next_block_number += 1
         return block_number
+
+    def read(self, block_number):
+        offset = block_number * self._block_size
+        return bytes(self._bytearray[offset:offset + self._block_size])
+
