@@ -47,11 +47,11 @@ class ReadOnlySegment(Segment):
         self._memoryview = memoryview(bytes)
 
     def bytes(self):
-        return self._memoryview
+        return bytes(self._memoryview)
 
     def read(self, block_number):
         offset = block_number * self._block_size
-        return bytes(self._memoryview[offset:offset + self._block_size])
+        return self._memoryview[offset:offset + self._block_size].tobytes()
 
 
 class ReadWriteSegment(Segment):
@@ -94,4 +94,3 @@ class ReadWriteSegment(Segment):
     def read(self, block_number):
         offset = block_number * self._block_size
         return bytes(self._bytearray[offset:offset + self._block_size])
-
