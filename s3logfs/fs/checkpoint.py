@@ -16,13 +16,11 @@ class CheckpointRegion:
 
   # returns the next inodeid
   def nextINode():
-    inodeid = self._inode_counter
     self._inode_counter += 1
-    return inodeid
+    return self._inode_counter
 
   # returns the next segmentid
   def nextSegmentId():
-    segid = self._segment_counter
     self._segment_counter += 1
-    return segid
+    return self._segment_counter
 
