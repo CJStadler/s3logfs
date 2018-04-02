@@ -1,5 +1,9 @@
 import errno
 
+from .fs.checkpoint import CheckpointRegion
+from s3_bucket import S3Bucket
+from .fs.log import Log
+
 from fusell import FUSELL
 
 
@@ -9,14 +13,19 @@ class FuseApi(FUSELL):
         This overrides the FUSELL __init__() so that we can set the bucket.
         '''
         self._bucket_name = bucket_name
+
         super().__init__(mountpoint, encoding=encoding)
 
     def init(self, userdata, conn):
-        """Initialize filesystem
+        
+        # init CheckpointRegion
+        self._CR = CheckpointRegion("TEST")
 
-        There's no reply to this method
-        """
-        pass
+        # init S3 bucket
+        self._bucket = S3Bucket(self._CR.s3_bucket_name);
+
+        # init Log
+        self._log = Log(self._CR.segment_count, self._bucket, self._CR.block_size, self._CR.segment_size)
 
     def destroy(self, userdata):
         """Clean up filesystem

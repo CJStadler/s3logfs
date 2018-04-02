@@ -1,5 +1,5 @@
-from segment import ReadOnlySegment, ReadWriteSegment
-from blockaddress import BlockAddress
+from .log import ReadOnlySegment, ReadWriteSegment
+from .log import BlockAddress
 from collections import defaultdict
 
 class Log:

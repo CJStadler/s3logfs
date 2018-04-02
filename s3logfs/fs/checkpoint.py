@@ -4,13 +4,13 @@ from collections import defaultdict
 
 class CheckpointRegion:
 
-  def __init__(self):
-    self.blockSize = 4096          # bytes
-    self.segmentSize = 512         # blocks (default 2MB)
-    self.fsSize = 2**28            # blocks (default 1TB space)
-    self.fsUsed = 0                # blocks
-    self.segmentCounter = 0        # unsigned long long (limited to 6 bytes)
-    self.iNodeCounter = 0          # unsigned long long
-    self.iNodeMap = defaultdict()  # inodeid <> BlockAddress of iNode in log
-
+  def __init__(self, bucket="TEST"):
+    self.block_size = 4096          # bytes
+    self.segment_size = 512         # blocks (default 2MB)
+    self.fs_size = 2**28             # blocks (default 1TB space)
+    self.fs_used = 0                 # blocks
+    self.segment_count = 0           # unsigned long long
+    self.inode_counter = 0           # unsigned long long
+    self.s3_bucket_name = bucket     # s3 bucket name
+    self.inode_map = defaultdict()   # inodeid <> BlockAddress of iNode in log
 

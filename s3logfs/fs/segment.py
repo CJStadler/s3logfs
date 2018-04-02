@@ -19,8 +19,9 @@ class Segment(ABC):
     def isInS3(self):
         return self._inS3
 
-    def markInS3(self):
-        self._inS3 = True
+    # set S3 status (True/False expected)
+    def setS3(self, status):
+        self._inS3 = status
 
     # returns if the segment is full only if RW and next block number mathces segment size OR Read Only
     def isFull(self):
