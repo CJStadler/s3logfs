@@ -1,6 +1,5 @@
 from abc import ABC, abstractmethod
-import sys
-
+from collections import defaultdict
 
 class Segment(ABC):
     '''
@@ -22,6 +21,15 @@ class Segment(ABC):
 
     def markInS3(self):
         self._inS3 = True
+
+    # returns if the segment is full only if RW and next block number mathces segment size OR Read Only
+    def isFull(self):
+        if (self._type == "RO"):
+            return True
+        elif (self._next_block_number == self._segment_size-1):
+            return True
+        else:
+            return False
 
     @abstractmethod
     def bytes(self):
@@ -74,7 +82,7 @@ class ReadWriteSegment(Segment):
         self._type = "RW"
         self._block_size = block_size
         self._segment_size = segment_size
-        self._next_block_number = 1        # block 0 will contain segment summary
+        self._next_block_number = 0
         self._bytearray = bytearray()
         self._inS3 = False
 
@@ -101,4 +109,6 @@ class ReadWriteSegment(Segment):
 
     def read(self, block_number):
         offset = block_number * self._block_size
-        return bytes(self._bytearray[offset:offset + self._block_size])
+        return self._bytearray[offset:offset + self._block_size]
+
+

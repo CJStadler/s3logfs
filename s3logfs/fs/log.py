@@ -1,5 +1,6 @@
-from .segment import ReadOnlySegment, ReadWriteSegment
-
+from segment import ReadOnlySegment, ReadWriteSegment
+from blockaddress import BlockAddress
+from collections import defaultdict
 
 class Log:
     """
@@ -9,32 +10,77 @@ class Log:
     time.
     """
 
-    def __init__(self, max_segment_size, last_segment_number, bucket):
-        self._max_segment_size = max_segment_size
-        self.last_segment_number = last_segment_number # Not including current segment
-        self._bucket = bucket
-        self._current_segment = ReadWriteSegment()
+    def __init__(self, next_segment_number, bucket, block_size=4096, max_segment_size=512):
 
+        # file system details
+        self._block_size = block_size
+        self._max_segment_size = max_segment_size
+        self._bucket = bucket
+
+        # BCH - removed to switch to defaultdict data structure
+        # self._current_segment = ReadWriteSegment()
+        # self.last_segment_number = last_segment_number
+
+        # init empty dict for segments
+        self._segments = defaultdict()
+
+        # create current segment and add to segments
+        self._current_segment = next_segment_number
+        self._segments[self._current_segment] = ReadWriteSegment(self._current_segment, 
+                                                                 self._block_size, 
+                                                                 self._max_segment_size)
+        # going to buffer ahead the next segment ahead of time, so that 
+        # transitioning from one write buffer to the next is fast
+        self._segments[self._current_segment+1] = ReadWriteSegment(self._current_segment+1,
+                                                                   self._block_size,
+                                                                   self._max_segment_size)
+    
     def read(self, segment_number, block_number):
-        seg_bytes = self._bucket.get_segment(segment_number)
-        segment = ReadOnlySegment(seg_bytes)
-        return segment.read(block_number)
+        try:
+          # return block of data if in memory
+          return self._segments[segment_number].read(block_number)
+        except:
+          # load segment into memory from S3 and return block of data
+          seg_bytes = self._bucket.get_segment(segment_number)
+          self._segments[segment_number] = ReadOnlySegment(segment_number, 
+                                                           self._block_size, 
+                                                           self._max_segment_size, 
+                                                           seg_bytes)
+          return self._segments[segment_number].read(block_number)
+
+          # NOTE: the above method of loading the segment, and then returning the block
+          # would be expensive, at least in the overall delay to the running program
+          # I would adjust this to start a thread which would load the segment 
+          # from S3 into the segments dict, and then just grab the block from S3 and
+          # return it. The thread would populate the data into the segments dict
+          # for future reads in parallel
 
     def write(self, block_bytes):
-        block_number = self._current_segment.write(block_bytes)
-        segment_number = self.last_segment_number + 1
 
-        if len(self._current_segment) > self._max_segment_size:
-            raise RuntimeError('Segment length is greater than max size')
-        elif len(self._current_segment) == self._max_segment_size:
-            self._put_current_segment()
+        # write data and get block number
+        block_number = self._segments[self._current_segment].write(block_bytes)
 
-        return (segment_number, block_number)
+        # create BlockAddress
+        blockAddr = BlockAddress(self._current_segment, block_number)
 
-    def _put_current_segment(self):
-        self.last_segment_number += 1
-        self._bucket.put_segment(
-            self.last_segment_number,
-            bytes(self._current_segment.bytes()) # bytearray -> bytes
-        )
-        self._current_segment = ReadWriteSegment()
+        # verify if segment is full
+        if (self._segments[self._current_segment].isFull()):
+
+          # last segment
+          last_segment = self._current_segment
+
+          # if full, transition to new write buffer (should be pre-defined)
+          self._current_segment += 1
+
+          # transition previous segment to read-only
+          self._segments[last_segment] = self._segments[last_segment].to_read_only()
+
+          # create the next write buffer (pre paring for future use)
+          self._segments[self._current_segment+1] = ReadWriteSegment(self._current_segment+1,
+                                                                     self._block_size,
+                                                                     self._max_segment_size)
+
+
+        # return BlockAddress for segment/block_number
+        return blockAddr
+
