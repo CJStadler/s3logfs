@@ -17,6 +17,12 @@ class Segment(ABC):
     def getType(self):
         return self._type
 
+    def isInS3(self):
+        return self._inS3
+
+    def markInS3(self):
+        self._inS3 = True
+
     @abstractmethod
     def bytes(self):
         '''
@@ -45,6 +51,7 @@ class ReadOnlySegment(Segment):
         self._block_size = block_size
         self._segment_size = segment_size
         self._memoryview = memoryview(bytes)
+        self._inS3 = False
 
     def bytes(self):
         return bytes(self._memoryview)
@@ -69,6 +76,7 @@ class ReadWriteSegment(Segment):
         self._segment_size = segment_size
         self._next_block_number = 1        # block 0 will contain segment summary
         self._bytearray = bytearray()
+        self._inS3 = False
 
     def bytes(self):
         return bytes(self._bytearray)
