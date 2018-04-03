@@ -9,6 +9,8 @@ class Log:
     Only a single instance of this class should exist for a filesystem at one
     time.
     """
+    # default value for blocksize for tests
+    BLOCK_SIZE = 4096
 
     def __init__(self, next_segment_number, bucket, block_size=4096, max_segment_size=512):
 
@@ -34,19 +36,22 @@ class Log:
         self._segments[self._current_segment+1] = ReadWriteSegment(self._current_segment+1,
                                                                    self._block_size,
                                                                    self._max_segment_size)
+
+    def getCurrentSegment(self):
+        return self._current_segment
     
-    def read(self, segment_number, block_number):
+    def read(self, bAddress):
         try:
           # return block of data if in memory
-          return self._segments[segment_number].read(block_number)
+          return self._segments[bAddress.segmentid].read(bAddress.offset)
         except:
           # load segment into memory from S3 and return block of data
-          seg_bytes = self._bucket.get_segment(segment_number)
-          self._segments[segment_number] = ReadOnlySegment(segment_number, 
-                                                           self._block_size, 
-                                                           self._max_segment_size, 
-                                                           seg_bytes)
-          return self._segments[segment_number].read(block_number)
+          seg_bytes = self._bucket.get_segment(bAddress.segmentid)
+          self._segments[bAddress.segmentid] = ReadOnlySegment(bAddress.segmentid, 
+                                                               self._block_size, 
+                                                               self._max_segment_size, 
+                                                               seg_bytes)
+          return self._segments[segment_number].read(bAddress.offset)
 
           # NOTE: the above method of loading the segment, and then returning the block
           # would be expensive, at least in the overall delay to the running program

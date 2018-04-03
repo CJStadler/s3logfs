@@ -7,6 +7,9 @@ class Segment(ABC):
     Instead, use either ReadOnlySegment or ReadWriteSegment.
     '''
 
+    # default block size for tests
+    BLOCK_SIZE = 4096
+
     def __len__(self):
         return len(self.bytes())
 
@@ -54,7 +57,7 @@ class ReadOnlySegment(Segment):
     a memoryview, which allows us to take slices of the data without copying.
     '''
 
-    def __init__(self, segment_id, block_size, segment_size, bytes):
+    def __init__(self, bytes=b'', segment_id=0, block_size=4096, segment_size=512):
         self._id = segment_id 
         self._type = "RO"
         self._block_size = block_size
@@ -78,7 +81,7 @@ class ReadWriteSegment(Segment):
     ReadOnlySegment.
     '''
 
-    def __init__(self, segment_id, block_size=4096, segment_size=512):
+    def __init__(self, segment_id=0, block_size=4096, segment_size=512):
         self._id = segment_id
         self._type = "RW"
         self._block_size = block_size
@@ -92,7 +95,7 @@ class ReadWriteSegment(Segment):
 
     def to_read_only(self):
         # i think we should pad the segment to zero's if we force the segment to write early
-        return ReadOnlySegment(self._id, self._block_size, self._segment_size, self._bytearray)
+        return ReadOnlySegment(self.bytes(), self._id, self._block_size, self._segment_size)
 
     def write(self, block_bytes):
         if len(block_bytes) > self._block_size:
@@ -110,6 +113,6 @@ class ReadWriteSegment(Segment):
 
     def read(self, block_number):
         offset = block_number * self._block_size
-        return self._bytearray[offset:offset + self._block_size]
+        return bytes(self._bytearray[offset:offset + self._block_size])
 
 
