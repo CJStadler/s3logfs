@@ -13,21 +13,21 @@ class Segment(ABC):
     def __len__(self):
         return len(self.bytes())
 
-    def getId(self):
+    def get_id(self):
         return self._id
 
-    def getType(self):
+    def get_type(self):
         return self._type
 
-    def isInS3(self):
-        return self._inS3
+    def is_in_s3(self):
+        return self._in_s3
 
     # set S3 status (True/False expected)
-    def setS3(self, status):
-        self._inS3 = status
+    def set_s3(self, status):
+        self._in_s3 = status
 
     # returns if the segment is full only if RW and next block number mathces segment size OR Read Only
-    def isFull(self):
+    def is_full(self):
         if (self._type == "RO"):
             return True
         elif (self._next_block_number == self._segment_size-1):
@@ -63,7 +63,7 @@ class ReadOnlySegment(Segment):
         self._block_size = block_size
         self._segment_size = segment_size
         self._memoryview = memoryview(bytes)
-        self._inS3 = False
+        self._in_s3 = False
 
     def bytes(self):
         return bytes(self._memoryview)
@@ -88,7 +88,7 @@ class ReadWriteSegment(Segment):
         self._segment_size = segment_size
         self._next_block_number = 0
         self._bytearray = bytearray()
-        self._inS3 = False
+        self._in_s3 = False
 
     def bytes(self):
         return bytes(self._bytearray)
