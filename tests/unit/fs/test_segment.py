@@ -52,11 +52,11 @@ class TestReadWriteSegment(TestCase):
 
     def test_write_when_bytes_less_than_block(self):
         seg = ReadWriteSegment()
-        bytes = seg.get_block_size() * b'a'
+        bytes = 100 * b'a'
         seg.write(bytes)
         block_number = seg.write(bytes)
-        padded_block = bytes + bytearray([0])
-        self.assertEqual(seg.bytes(), 2 * padded_block)
+        padded_block = bytes + b'0' * (seg.get_block_size() - 100)
+        self.assertEqual(seg.read(block_number), padded_block)
         self.assertEqual(block_number, 1)
 
     def test_write_when_bytes_is_a_full_block(self):

@@ -19,6 +19,9 @@ class Segment(ABC):
     def get_block_size(self):
         return self._block_size
 
+    def get_max_segment_count(self):
+        return self._max_segment_count
+
     def is_in_s3(self):
         return self._in_s3
 
@@ -30,7 +33,7 @@ class Segment(ABC):
     def is_full(self):
         if (self._type == "RO"):
             return True
-        elif (self._next_block_number == self._segment_size-1):
+        elif (self._next_block_number == self._max_segment_count-1):
             return True
         else:
             return False
@@ -57,11 +60,11 @@ class ReadOnlySegment(Segment):
     a memoryview, which allows us to take slices of the data without copying.
     '''
 
-    def __init__(self, bytes=b'', segment_id=0, block_size=4096, segment_size=512):
+    def __init__(self, bytes=b'', segment_id=0, block_size=4096, max_segment_count=512):
         self._id = segment_id 
         self._type = "RO"
         self._block_size = block_size
-        self._segment_size = segment_size
+        self._max_segment_count = max_segment_count
         self._memoryview = memoryview(bytes)
         self._in_s3 = False
 
@@ -81,11 +84,11 @@ class ReadWriteSegment(Segment):
     ReadOnlySegment.
     '''
 
-    def __init__(self, segment_id=0, block_size=4096, segment_size=512):
+    def __init__(self, segment_id=0, block_size=4096, max_segment_count=512):
         self._id = segment_id
         self._type = "RW"
         self._block_size = block_size
-        self._segment_size = segment_size
+        self._max_segment_count = max_segment_count
         self._next_block_number = 0
         self._bytearray = bytearray()
         self._in_s3 = False
@@ -95,7 +98,7 @@ class ReadWriteSegment(Segment):
 
     def to_read_only(self):
         # i think we should pad the segment to zero's if we force the segment to write early
-        return ReadOnlySegment(self.bytes(), self._id, self._block_size, self._segment_size)
+        return ReadOnlySegment(self.bytes(), self._id, self._block_size, self._max_segment_count)
 
     def write(self, block_bytes):
         if len(block_bytes) > self._block_size:
@@ -104,7 +107,7 @@ class ReadWriteSegment(Segment):
         self._bytearray.extend(block_bytes)
 
         if len(block_bytes) < self._block_size:
-            padding = (self._block_size - len(block_bytes)) * [0]
+            padding = (self._block_size - len(block_bytes)) * b'0'
             self._bytearray.extend(padding)
 
         block_number = self._next_block_number
