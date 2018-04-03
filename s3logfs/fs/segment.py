@@ -6,8 +6,6 @@ class Segment(ABC):
     This is an abstract class and should not be instantiated directly.
     Instead, use either ReadOnlySegment or ReadWriteSegment.
     '''
-    # only used for unit testing
-    BLOCK_SIZE = 4096
 
     def __len__(self):
         return len(self.bytes())
