@@ -1,58 +1,26 @@
 import errno
-from datetime import datetime
 
-from .fs import CheckpointRegion
-from .s3_bucket import S3Bucket
-from .fs import Log
-from .fs import INode
-from .fs import BlockAddress
+from fusell import FUSELL
 
-from .fusell import FUSELL
+class s3LogFS(FUSELL):
 
-
-class FuseApi(FUSELL):
     def __init__(self, mountpoint, bucket_name, encoding='utf-8'):
         '''
         This overrides the FUSELL __init__() so that we can set the bucket.
         '''
-
-        # mount point
-        self._mount = mountpoint
-
-        # for testing, if "TEST" is passed as the bucket name
-        # a new bucket will be created with the current 
-        # datetime as the bucket name, otherwise it will be 
-        # named with what is passed as an argument
-        if (bucket_name == "TEST"):
-          self._bucket_name = datetime.now()
-          print("DT: ", str(self._bucket_name))
-        else:
-          self._bucket_name = bucket_name        
-
+        self._bucket_name = bucket_name
         super().__init__(mountpoint, encoding=encoding)
 
     def init(self, userdata, conn):
+        """Initialize filesystem"""
 
-        # init superblock
-        
-        # init CheckpointRegion - new FS, no recovery yet
-        self._CR = CheckpointRegion(self._bucket_name, 0)
-
-        # store superblock in CheckpointRegion
-
-        # init S3 bucket
-        self._bucket = S3Bucket(self._bucket_name);
-
+        # init Checkpoint Region
+        self.CR = CheckpointRegion()
+    
         # init Log
-        self._log = Log(self._CR.nextSegmentId(), self._bucket, self.CR.block_size, self.CR.segment_size)
+        self.log = Log()
 
-        # need to init default root structure in files
-        # 1. empty directory data block
-        # 2. directory inode block
-        # 3. update self._CR inode_map with inodeid to BlockAddress in log 
-
-        # might implement the above by defining a directory INode
-        # and then writing it to the segment.
+        pass
 
     def destroy(self, userdata):
         """Clean up filesystem

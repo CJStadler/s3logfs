@@ -1,10 +1,10 @@
 import argparse
 
-from s3logfs import FuseApi
+from s3logfs import s3LogFS
 
 parser = argparse.ArgumentParser()
 parser.add_argument('mount')
 parser.add_argument('bucket')
 args = parser.parse_args()
 
-fuse = FuseApi(args.mount, args.bucket)
+s3LogFS(args.mount, args.bucket)
