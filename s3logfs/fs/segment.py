@@ -6,8 +6,7 @@ class Segment(ABC):
     This is an abstract class and should not be instantiated directly.
     Instead, use either ReadOnlySegment or ReadWriteSegment.
     '''
-
-    # default block size for tests
+    # only used for unit testing
     BLOCK_SIZE = 4096
 
     def __len__(self):
@@ -18,6 +17,9 @@ class Segment(ABC):
 
     def get_type(self):
         return self._type
+
+    def get_block_size(self):
+        return self._block_size
 
     def is_in_s3(self):
         return self._in_s3
