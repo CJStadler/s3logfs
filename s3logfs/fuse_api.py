@@ -1,4 +1,5 @@
 import errno
+from datetime import datetime
 
 from .fs import CheckpointRegion
 from .s3_bucket import S3Bucket
@@ -14,26 +15,44 @@ class FuseApi(FUSELL):
         '''
         This overrides the FUSELL __init__() so that we can set the bucket.
         '''
-        self._bucket_name = bucket_name
+
+        # mount point
+        self._mount = mountpoint
+
+        # for testing, if "TEST" is passed as the bucket name
+        # a new bucket will be created with the current 
+        # datetime as the bucket name, otherwise it will be 
+        # named with what is passed as an argument
+        if (bucket_name == "TEST"):
+          self._bucket_name = datetime.now()
+          print("DT: ", str(self._bucket_name))
+        else:
+          self._bucket_name = bucket_name        
 
         super().__init__(mountpoint, encoding=encoding)
 
     def init(self, userdata, conn):
+
+        # init superblock
         
-        # init CheckpointRegion
-# BCH - need to update this to get bucket from arguments
-        self._CR = CheckpointRegion()
+        # init CheckpointRegion - new FS, no recovery yet
+        self._CR = CheckpointRegion(self._bucket_name, 0)
+
+        # store superblock in CheckpointRegion
 
         # init S3 bucket
-        self._bucket = S3Bucket(self._CR.s3_bucket_name);
+        self._bucket = S3Bucket(self._bucket_name);
 
         # init Log
-        self._log = Log(self._CR.nextSegmentId(), self._bucket, self._CR.block_size, self._CR.segment_size)
+        self._log = Log(self._CR.nextSegmentId(), self._bucket, self.CR.block_size, self.CR.segment_size)
 
         # need to init default root structure in files
         # 1. empty directory data block
         # 2. directory inode block
         # 3. update self._CR inode_map with inodeid to BlockAddress in log 
+
+        # might implement the above by defining a directory INode
+        # and then writing it to the segment.
 
     def destroy(self, userdata):
         """Clean up filesystem

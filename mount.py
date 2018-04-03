@@ -7,4 +7,4 @@ parser.add_argument('mount')
 parser.add_argument('bucket')
 args = parser.parse_args()
 
-FuseApi(args.mount, args.bucket)
+fuse = FuseApi(args.mount, args.bucket)
