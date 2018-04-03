@@ -1,2 +1,4 @@
 __pycache__
 *.pyc
+build/*
+s3logfs.egg-info/

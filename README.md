@@ -11,6 +11,19 @@ File System Requirements:
  - Boto3 (Amazon Python SDK)
    https://aws.amazon.com/sdk-for-python/
 
+## Setup
+
+```
+pip3 install -e path_to_repo
+```
+
+To mount:
+```
+mount.s3logfs directory_to_mount bucket_name
+```
+Credentials for the bucket must be configured correctly for boto3
+(https://boto3.readthedocs.io/en/latest/guide/quickstart.html#configuration).
+
 ## Testing
 Tests are divided into two groups: unit and integration. The main difference is
 that unit tests mock out external requests (primarily to S3), while integration
