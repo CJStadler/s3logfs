@@ -8,6 +8,35 @@ class TestS3Bucket(TestCase):
         self.assertEqual(S3Bucket.SEGMENT_PREFIX, 'seg_')
         self.assertEqual(S3Bucket.SUPER_BLOCK_KEY, 'super_block')
 
+    def test_create(self):
+        bucket_name = 'test_bucket'
+        bucket = S3Bucket(bucket_name)
+        client = Mock()
+        bucket._client = client
+
+        bucket.create()
+
+        client.create_bucket.assert_called_once_with(
+            Bucket=bucket_name,
+            ACL='private'
+        )
+
+    def test_create_with_region_and_acl(self):
+        bucket_name = 'test_bucket'
+        bucket = S3Bucket(bucket_name)
+        client = Mock()
+        bucket._client = client
+        acl = 'public-read'
+        region = 'EU'
+        
+        bucket.create(acl=acl, region=region)
+
+        client.create_bucket.assert_called_once_with(
+            Bucket=bucket_name,
+            ACL=acl,
+            CreateBucketConfiguration={ 'LocationConstraint': region }
+        )
+
     def test_get_checkpoint(self):
         bucket_name = 'test_bucket'
         bucket = S3Bucket(bucket_name)

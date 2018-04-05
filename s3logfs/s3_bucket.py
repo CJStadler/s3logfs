@@ -15,6 +15,21 @@ class S3Bucket:
         self._bucket_name = bucket_name
         self._client = client('s3')
 
+    def create(self, acl='private', region=None):
+        '''
+        Creates the bucket. This succeeds even if the bucket already exists.
+        '''
+        request_args = {
+            'ACL': acl,
+            'Bucket': self._bucket_name,
+        }
+
+        if region:
+            request_args['CreateBucketConfiguration'] = {
+                'LocationConstraint': region}
+
+        self._client.create_bucket(**request_args)
+
     def get_checkpoint(self):
         return self._get_object(self.CHECKPOINT_KEY)
 
