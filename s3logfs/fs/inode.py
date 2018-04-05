@@ -1,9 +1,11 @@
 from .blockaddress import BlockAddress
+from .log import Log
 from struct import Struct
 from array import array
 from errno import ENOENT
 from stat import *
 from time import time
+from collections import *
 
 class INode:
     NUMBER_OF_DIRECT_BLOCKS = 16
@@ -31,6 +33,8 @@ class INode:
         # owner and group id's
         self.uid = 0                      # st_uid
         self.gid = 0                      # st_gid
+        # parent inode id, to make it easier to implement ".."
+        self.parent = 0
         # number of sub-directories in a directory includnig "." and ".."
         self.hard_links = 0               # st_nlink
         # file accessed timestamps
@@ -38,6 +42,8 @@ class INode:
         self.last_modified_at = 0         # st_mtime
         self.status_last_changed_at = 0   # st_ctime
         self.block_addresses = self.NUMBER_OF_DIRECT_BLOCKS * [BlockAddress()]
+        # for directory lookups, will be populated from data after inode is loaded
+        self.children = {}
 
     @classmethod
     def from_bytes(klass, bytes):
@@ -138,11 +144,14 @@ class INode:
     def get_chmod(self):
         return S_IMODE(self.mode)
 
-test = INode()
-test.inode_number = 1
-test.mode = S_IFREG
-test.set_chmod(0o544)
-print(test.mode, test.get_type(), test.get_chmod(), 0o544)
-test.set_chmod(0o777)
-test.set_type(S_IFDIR)
-print(test.mode, test.get_type(), test.get_chmod(), 0o777)
+    # LOG ACTIONS
+    def log_directory_data(self,log):
+        pass
+
+    def log_file_data(self,log):
+        pass
+
+    def log_link_data(self,log):
+        pass
+
+

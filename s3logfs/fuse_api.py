@@ -1,5 +1,6 @@
 import errno
 from datetime import datetime
+from stat import *
 
 from .fs import CheckpointRegion
 from .s3_bucket import S3Bucket
@@ -44,12 +45,22 @@ class FuseApi(FUSELL):
         self._bucket = S3Bucket(self._bucket_name);
 
         # init Log
-        self._log = Log(self._CR.nextSegmentId(), self._bucket, self._CR.block_size, self._CR.segment_size)
+        self._log = Log(self._CR.next_segment_id(), self._bucket, self._CR.block_size, self._CR.segment_size)
 
-        # need to init default root structure in files
-        # 1. empty directory data block
-        # 2. directory inode block
-        # 3. update self._CR inode_map with inodeid to BlockAddress in log 
+        # need to init empty file system
+        # 1. create root inode
+        root_inode = INode()
+        root_inode.inode_number = self._CR.next_inode_id()
+        root_inode.mode = S_IFDIR | 0o777                  # directory with 777 chmod
+        root_inode.hard_links = 2                          # "." and ".." make the first 2 hard links
+        # 2. write root inode directory data to log
+        root_inode.log_directory_data(self._log)
+        # 3. write root inode to log
+        root_inode_addr = self._log.write(root_inode.to_bytes())
+        # 4. update CR inode_map to for "/"
+        self._CR.inode_map[root_inode.inode_number] = root_inode_addr
+        # 5. update CR root_inode_id for "/"
+        self._CR.root_inode_id = root_inode.inode_number
 
         # might implement the above by defining a directory INode
         # and then writing it to the segment.
