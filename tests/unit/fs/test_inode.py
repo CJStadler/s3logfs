@@ -5,8 +5,8 @@ from s3logfs.fs import INode, BlockAddress
 
 
 class TestINode(unittest.TestCase):
-    def test_number_of_blocks(self):
-        self.assertEqual(INode.NUMBER_OF_BLOCKS, 16)
+    def test_number_of_direct_blocks(self):
+        self.assertEqual(INode.NUMBER_OF_DIRECT_BLOCKS, 16)
 
     def test_struct_format(self):
         self.assertEqual(INode.STRUCT_FORMAT, 'ILI????LLL')
@@ -24,7 +24,7 @@ class TestINode(unittest.TestCase):
         inode.last_accessed_at = t - 1
         inode.last_modified_at = t - 2
         inode.status_last_changed_at = t - 3
-        inode.block_addresses[INode.NUMBER_OF_BLOCKS - 1] = \
+        inode.block_addresses[INode.NUMBER_OF_DIRECT_BLOCKS - 1] = \
             BlockAddress(789, 99)
         out_bytes = inode.to_bytes()
 
