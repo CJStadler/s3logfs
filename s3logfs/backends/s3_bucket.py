@@ -9,11 +9,28 @@ class S3Bucket:
     '''
     CHECKPOINT_KEY = 'checkpoint'
     SEGMENT_PREFIX = 'seg_'
-    SUPER_BLOCK_KEY = 'super_block'
 
     def __init__(self, bucket_name):
         self._bucket_name = bucket_name
         self._client = client('s3')
+
+    def name(self):
+        return self._bucket_name
+        
+    def create(self, acl='private', region=None):
+        '''
+        Creates the bucket. This succeeds even if the bucket already exists.
+        '''
+        request_args = {
+            'ACL': acl,
+            'Bucket': self._bucket_name,
+        }
+
+        if region:
+            request_args['CreateBucketConfiguration'] = {
+                'LocationConstraint': region}
+
+        self._client.create_bucket(**request_args)
 
     def get_checkpoint(self):
         return self._get_object(self.CHECKPOINT_KEY)
@@ -21,17 +38,11 @@ class S3Bucket:
     def get_segment(self, segment_number):
         return self._get_object(self._segment_key(segment_number))
 
-    def get_super_block(self):
-        return self._get_object(self.SUPER_BLOCK_KEY)
-
     def put_checkpoint(self, checkpoint_bytes):
         self._put_object(self.CHECKPOINT_KEY, checkpoint_bytes)
 
     def put_segment(self, segment_number, segment_bytes):
         self._put_object(self._segment_key(segment_number), segment_bytes)
-
-    def put_super_block(self, super_block_bytes):
-        self._put_object(self.SUPER_BLOCK_KEY, super_block_bytes)
 
     # Private methods
 

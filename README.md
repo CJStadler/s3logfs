@@ -21,6 +21,12 @@ To mount:
 ```
 mount.s3logfs directory_to_mount bucket_name
 ```
+
+To unmount:
+```
+fusermount -u mount_directory
+```
+
 Credentials for the bucket must be configured correctly for boto3
 (https://boto3.readthedocs.io/en/latest/guide/quickstart.html#configuration).
 

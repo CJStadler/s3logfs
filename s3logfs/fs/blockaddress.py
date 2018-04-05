@@ -7,8 +7,11 @@ class BlockAddress:
     #  - bytearray (1 argument)
     #  - segmentid,offset (2 arguments)
     def __init__(self, *args, **kwargs):
-        # 8-byte bytearray (6 = segmentid, 2 = offset)
-        if (len(args) == 1):  # bytearray
+        if (len(args) == 0): # empty (set to 0,0)
+            # base address (0,0)
+            self.segmentid = 0
+            self.offset = 0
+        elif (len(args) == 1):  # bytearray
             # first 6 bytes is segmentid (placed in unsigned long long)
             self.segmentid = struct.unpack("<Q", args[0][0:6] + b'\x00\x00')[0]
             # last 2 bytes is offset (placed in unsigned short)
@@ -22,10 +25,11 @@ class BlockAddress:
         else:
             # *** need to replace this with how we will handle errors ***
             print("ERROR")
+            return NotImplemented
 
     def __eq__(self, other):
         if isinstance(self, other.__class__):
-            return self.segmentid == other.segmentid and self.offset == other.offset
+            return (self.segmentid == other.segmentid and self.offset == other.offset)
         return NotImplemented
 
     def __hash__(self):

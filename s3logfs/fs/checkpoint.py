@@ -15,12 +15,12 @@ class CheckpointRegion:
     self.inode_map = defaultdict()   # inodeid <> BlockAddress
 
   # returns the next inodeid
-  def nextINode():
+  def nextINode(self):
     self._inode_counter += 1
     return self._inode_counter
 
   # returns the next segmentid
-  def nextSegmentId():
+  def nextSegmentId(self):
     self._segment_counter += 1
     return self._segment_counter
 

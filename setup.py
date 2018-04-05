@@ -120,6 +120,7 @@ setup(
     # https://packaging.python.org/en/latest/requirements.html
     install_requires=[
         'boto3',
+        'cachetools',
         'fusepy'
     ],
 
@@ -129,7 +130,7 @@ setup(
     # platform.
     entry_points={  # Optional
         'console_scripts': [
-            'mount.s3logfs=mount',
+            'mount.s3logfs=s3logfs.mount:main',
         ],
     },
 )

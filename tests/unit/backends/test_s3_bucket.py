@@ -1,12 +1,40 @@
 from unittest import TestCase
 from unittest.mock import Mock
-from s3logfs import S3Bucket
+from s3logfs.backends import S3Bucket
 
 class TestS3Bucket(TestCase):
     def test_constants(self):
         self.assertEqual(S3Bucket.CHECKPOINT_KEY, 'checkpoint')
         self.assertEqual(S3Bucket.SEGMENT_PREFIX, 'seg_')
-        self.assertEqual(S3Bucket.SUPER_BLOCK_KEY, 'super_block')
+
+    def test_create(self):
+        bucket_name = 'test_bucket'
+        bucket = S3Bucket(bucket_name)
+        client = Mock()
+        bucket._client = client
+
+        bucket.create()
+
+        client.create_bucket.assert_called_once_with(
+            Bucket=bucket_name,
+            ACL='private'
+        )
+
+    def test_create_with_region_and_acl(self):
+        bucket_name = 'test_bucket'
+        bucket = S3Bucket(bucket_name)
+        client = Mock()
+        bucket._client = client
+        acl = 'public-read'
+        region = 'EU'
+        
+        bucket.create(acl=acl, region=region)
+
+        client.create_bucket.assert_called_once_with(
+            Bucket=bucket_name,
+            ACL=acl,
+            CreateBucketConfiguration={ 'LocationConstraint': region }
+        )
 
     def test_get_checkpoint(self):
         bucket_name = 'test_bucket'
@@ -38,21 +66,6 @@ class TestS3Bucket(TestCase):
             Key='seg_123'
         )
 
-    def test_get_super_block(self):
-        bucket_name = 'test_bucket'
-        bucket = S3Bucket(bucket_name)
-        body_bytes = b'abcd'
-        client = self._client_get_mock(body_bytes)
-        bucket._client = client
-
-        result = bucket.get_super_block()
-
-        self.assertEqual(result, body_bytes)
-        client.get_object.assert_called_once_with(
-            Bucket=bucket_name,
-            Key=S3Bucket.SUPER_BLOCK_KEY
-        )
-
     def test_put_checkpoint(self):
         bucket_name = 'test_bucket'
         bucket = S3Bucket(bucket_name)
@@ -80,21 +93,6 @@ class TestS3Bucket(TestCase):
         client.put_object.assert_called_once_with(
             Bucket=bucket_name,
             Key='seg_123',
-            Body=body_bytes
-        )
-
-    def test_put_super_block(self):
-        bucket_name = 'test_bucket'
-        bucket = S3Bucket(bucket_name)
-        body_bytes = b'abcd'
-        client = Mock()
-        bucket._client = client
-
-        result = bucket.put_super_block(body_bytes)
-
-        client.put_object.assert_called_once_with(
-            Bucket=bucket_name,
-            Key=S3Bucket.SUPER_BLOCK_KEY,
             Body=body_bytes
         )
 
