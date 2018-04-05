@@ -144,14 +144,31 @@ class INode:
     def get_chmod(self):
         return S_IMODE(self.mode)
 
-    # LOG ACTIONS
-    def log_directory_data(self,log):
+    # FILE DATA READ/WRITE
+    def read_file_data(self,log):
         pass
 
-    def log_file_data(self,log):
+    def write_file_data(self,log):
         pass
 
-    def log_link_data(self,log):
+    # DIRECTORY DATA READ/WRITE
+    def write_directory_data(self,log):
+        # 1. iterate through children and build bytearray
+        # 2. chop bytearray up by block_size, write and store addresses in block_addresses
+        # NOTE: expand to support indirect pointers when added
+        pass
+
+    def read_directory_data(self,log):
+        # 1. iterate through block_addresses, load data into bytearray
+        # 2. load bytearray into children list
+        # NOTE: expand to support indirect pointers when addedf
+        pass
+
+    # LINK DATA READ/WRITE
+    def read_link_data(self,log):
+        pass
+
+    def write_link_data(self,log):
         pass
 
 
