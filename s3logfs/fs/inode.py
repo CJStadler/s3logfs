@@ -100,8 +100,16 @@ class INode:
         return (S_ISREG(self.mode) != 0)
 
     # returns True if iNode is a symbolic link
-    def is_link(self):
+    def is_symlink(self):
         return (S_ISLNK(self.mode) != 0)
+
+    # returns the file type portion of mode
+    def get_type(self):
+        return S_IFMT(self.mode)
+
+    # set type
+    def set_type(self, inode_type):
+        self.mode = (self.mode ^ S_IFMT(self.mode)) | inode_type
 
     # permission check
     #
@@ -124,3 +132,17 @@ class INode:
     def chmod_match(self, chmod):
         return (((self.mode & S_IRWXU) | (self.mode & S_IRWXG) | (self.mode & S_IRWXO)) == chmod)
 
+    def set_chmod(self, chmod):
+        self.mode = (self.mode ^ S_IMODE(self.mode)) | chmod
+
+    def get_chmod(self):
+        return S_IMODE(self.mode)
+
+test = INode()
+test.inode_number = 1
+test.mode = S_IFREG
+test.set_chmod(0o544)
+print(test.mode, test.get_type(), test.get_chmod(), 0o544)
+test.set_chmod(0o777)
+test.set_type(S_IFDIR)
+print(test.mode, test.get_type(), test.get_chmod(), 0o777)
