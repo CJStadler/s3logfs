@@ -1,20 +1,18 @@
+from .blockaddress import BlockAddress
 from struct import Struct
 from array import array
-from .blockaddress import BlockAddress
 from errno import ENOENT
 from stat import *
 from time import time
 
 class INode:
     NUMBER_OF_DIRECT_BLOCKS = 16
-    STRUCT_FORMAT = 'ILI????LLL' # Plus block addresses
+    STRUCT_FORMAT = 'QQQIIIIILLL' # Plus block addresses
     STRUCT = Struct(STRUCT_FORMAT)
 
     def __init__(self):
         # unique inode id
         self.inode_number = 0
-        # quick access to this inode's name Ex: /foo/bar/ and this is bar directory, name = "bar"
-        self.name = ""
         # size of data (all 3 used by FUSE)
         self.size = 0                     # st_size - total bytes (file data, or pathname size for link)
         self.block_count = 0              # st_blocks - number of blocks (usually in 512-byte units, not blksize)
@@ -28,13 +26,8 @@ class INode:
         #   S_IFDIR    0o040000   directory
         #   S_IFCHR    0o020000   character device
         #   S_IFIFO    0o010000   FIFO
+        #   perm       0o000XXX   permissions = O|G|U w/ value  0 to 7
         self.mode = 0         
-        # owner/group/user permission model
-        # each access will have a value from 0 to 7, which will define Read/Write/EXecute
-        # Ex: 544 is O:R-X G:R-- U:R--
-        self.owner_access = 0             # part of st_mode
-        self.group_access = 0             # part of st_mode
-        self.user_access = 0              # part of st_mode
         # owner and group id's
         self.uid = 0                      # st_uid
         self.gid = 0                      # st_gid
@@ -56,11 +49,12 @@ class INode:
         (
             inode.inode_number,
             inode.size,
+            inode.block_count,
+            inode.block_size,    
+            inode.mode,         
+            inode.uid,
+            inode.gid,
             inode.hard_links,
-            inode.is_directory,
-            inode.readable,
-            inode.writable,
-            inode.executable,
             inode.last_accessed_at,
             inode.last_modified_at,
             inode.status_last_changed_at
@@ -78,23 +72,24 @@ class INode:
         struct_bytes = self.STRUCT.pack(
             self.inode_number,
             self.size,
+            self.block_count,
+            self.block_size,    
+            self.mode,         
+            self.uid,
+            self.gid,
             self.hard_links,
-            self.is_directory,
-            self.readable,
-            self.writable,
-            self.executable,
             self.last_accessed_at,
             self.last_modified_at,
             self.status_last_changed_at
         )
 
-        bytes = bytearray(struct_bytes)
+        data = bytearray(struct_bytes)
 
         for i in range(self.NUMBER_OF_DIRECT_BLOCKS):
             address = self.block_addresses[i]
-            bytes.extend(address.to_bytes())
+            data.extend(address.to_bytes())
 
-        return bytes
+        return data
 
     # returns True if iNode is a directory
     def is_directory(self):
@@ -107,5 +102,3 @@ class INode:
     # returns True if iNode is a symbolic link
     def is_link(self):
         return (S_ISLNK(self.mode) != 0)
-
-

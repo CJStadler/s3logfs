@@ -2,6 +2,7 @@ import unittest
 
 from time import time
 from s3logfs.fs import INode, BlockAddress
+from stat import S_IFDIR
 
 
 class TestINode(unittest.TestCase):
@@ -9,17 +10,16 @@ class TestINode(unittest.TestCase):
         self.assertEqual(INode.NUMBER_OF_DIRECT_BLOCKS, 16)
 
     def test_struct_format(self):
-        self.assertEqual(INode.STRUCT_FORMAT, 'ILI????LLL')
+        self.assertEqual(INode.STRUCT_FORMAT, 'QQQIIIIILLL')
 
     def test_to_and_from_bytes(self):
         inode = INode()
         inode.inode_number = 123
         inode.size = 456
+        inode.block_count = 1
+        inode.block_size = 4096
+        inode.mode = S_IFDIR | 0o077
         inode.hard_links = 3
-        inode.is_directory = True
-        inode.readable = False
-        inode.writable = True
-        inode.executable = True
         t = int(time())
         inode.last_accessed_at = t - 1
         inode.last_modified_at = t - 2
@@ -32,11 +32,10 @@ class TestINode(unittest.TestCase):
 
         self.assertEqual(new_inode.inode_number, inode.inode_number)
         self.assertEqual(new_inode.size, inode.size)
+        self.assertEqual(new_inode.block_count, inode.block_count)
+        self.assertEqual(new_inode.block_size, inode.block_size)
+        self.assertEqual(new_inode.mode, inode.mode)
         self.assertEqual(new_inode.hard_links, inode.hard_links)
-        self.assertEqual(new_inode.is_directory, inode.is_directory)
-        self.assertEqual(new_inode.readable, inode.readable)
-        self.assertEqual(new_inode.writable, inode.writable)
-        self.assertEqual(new_inode.executable, inode.executable)
         self.assertEqual(new_inode.last_accessed_at, inode.last_accessed_at)
         self.assertEqual(new_inode.last_modified_at, inode.last_modified_at)
         self.assertEqual(new_inode.status_last_changed_at,
