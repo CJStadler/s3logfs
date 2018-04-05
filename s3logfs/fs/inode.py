@@ -109,13 +109,3 @@ class INode:
         return (S_ISLNK(self.mode) != 0)
 
 
-
-ino = INode()
-ino.inode_number = 1
-ino.name = "/"
-ino.hard_links = 1
-ino.mode = S_IFREG
-print(ino.is_directory())
-print(ino.is_file())
-print(ino.is_link())
-
