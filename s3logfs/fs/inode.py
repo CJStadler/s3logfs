@@ -102,3 +102,25 @@ class INode:
     # returns True if iNode is a symbolic link
     def is_link(self):
         return (S_ISLNK(self.mode) != 0)
+
+    # permission check
+    #
+    #          READ     WRITE    EXECUTE
+    #   Owner  S_IRUSR  S_IWUSR  S_IXUSR
+    #   Group  S_IRGRP  S_IWGRP  S_IXGRP
+    #   Other  S_IROTH  S_IWOTH  S_IXOTH
+    #
+    # EX: check if owner has read permissions
+    #     has_permission(S_IRUSR)
+    def has_permission(self, perm):
+        if (perm >=1 and perm <= 4):
+            return (self.mode & S_IRWXO & perm > 0)
+        elif (perm >= 8 and perm <= 32):
+            return (self.mode & S_IRWXG & perm > 0)
+        else:
+            return (self.mode & S_IRWXU & perm > 0)
+
+    # check if a given chmod value matches the current value
+    def chmod_match(self, chmod):
+        return (((self.mode & S_IRWXU) | (self.mode & S_IRWXG) | (self.mode & S_IRWXO)) == chmod)
+
