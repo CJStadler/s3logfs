@@ -25,7 +25,7 @@ class BlockAddress:
 
     def __eq__(self, other):
         if isinstance(self, other.__class__):
-            return self.segmentid == other.segmentid and self.offset == other.offset
+            return (self.segmentid == other.segmentid and self.offset == other.offset)
         return NotImplemented
 
     def __hash__(self):

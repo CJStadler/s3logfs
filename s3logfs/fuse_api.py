@@ -44,7 +44,7 @@ class FuseApi(FUSELL):
         self._bucket = S3Bucket(self._bucket_name);
 
         # init Log
-        self._log = Log(self._CR.nextSegmentId(), self._bucket, self.CR.block_size, self.CR.segment_size)
+        self._log = Log(self._CR.nextSegmentId(), self._bucket, self._CR.block_size, self._CR.segment_size)
 
         # need to init default root structure in files
         # 1. empty directory data block
