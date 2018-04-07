@@ -1,6 +1,6 @@
 from .blockaddress import BlockAddress
 from .log import Log
-from struct import Struct
+from struct import *
 from array import array
 from errno import ENOENT
 from stat import *
@@ -17,7 +17,7 @@ class INode:
         self.inode_number = 0
         # size of data (all 3 used by FUSE)
         self.size = 0                     # st_size - total bytes (file data, or pathname size for link)
-        self.block_count = 0              # st_blocks - number of blocks (usually in 512-byte units, not blksize)
+        self.block_count = 0              # st_blocks - number of blocks (usually in 512-byte units)
         self.block_size = 0               # st_blksize
         # st_mode (file type + permissions combined via masking)
         #   S_IFMT     0o170000   bit mask for the file type bit field
@@ -41,12 +41,16 @@ class INode:
         self.last_accessed_at = 0         # st_atime
         self.last_modified_at = 0         # st_mtime
         self.status_last_changed_at = 0   # st_ctime
+        self.block_offset = 0
         self.block_addresses = self.NUMBER_OF_DIRECT_BLOCKS * [BlockAddress()]
         # for directory lookups, will be populated from data after inode is loaded
         self.children = {}
 
     @classmethod
-    def from_bytes(klass, bytes):
+    def from_bytes(klass, data):
+        # trim off padding (anything inluding or after \x3C "<")
+        bytes = data[0:data.index(b'\x3C')]
+        # pull data out of block of bytes
         struct_bytes = bytes[:klass.STRUCT.size]
         addresses_bytes = bytes[klass.STRUCT.size:]
         unpacked_values = klass.STRUCT.unpack(struct_bytes)
@@ -95,7 +99,10 @@ class INode:
             address = self.block_addresses[i]
             data.extend(address.to_bytes())
 
-        return data
+        # end data with "<"
+        data.extend(b'\x3C')
+
+        return bytes(data)
 
     # returns True if iNode is a directory
     def is_directory(self):
@@ -115,7 +122,7 @@ class INode:
 
     # set type
     def set_type(self, inode_type):
-        self.mode = (self.mode ^ S_IFMT(self.mode)) | inode_type
+        self.mode = (self.mode ^ S_IFMT(self.mode)) | inode_ntype
 
     # permission check
     #
@@ -144,31 +151,68 @@ class INode:
     def get_chmod(self):
         return S_IMODE(self.mode)
 
-    # FILE DATA READ/WRITE
-    def read_file_data(self,log):
-        pass
+    # this method allows us to set the address at the next block_offset
+    # NOTE: needs to be extended with indirect pointers
+    def write_address(self, address, offset=''):
+        if (offset==''):
+            if (self.block_offset < self.NUMBER_OF_DIRECT_BLOCKS):
+                self.block_addresses[self.block_offset] = address
+                self.block_offset += 1
+            else:
+                # INDIRECT BLOCKS
+                return NotImplemented
+        else:
+            if (offset < self.NUMBER_OF_DIRECT_BLOCKS):
+                self.block_addresses[offset] = address
+                self.block_offset = offset + 1
+            else:
+                # INDIRECT BLOCKS
+                return NotImplemented
 
-    def write_file_data(self,log):
-        pass
+        # increase block_count if we just wrote an address to a higher 
+        if (self.block_count < self.block_offset):
+            self.block_count = self.block_offset
 
-    # DIRECTORY DATA READ/WRITE
-    def write_directory_data(self,log):
-        # 1. iterate through children and build bytearray
-        # 2. chop bytearray up by block_size, write and store addresses in block_addresses
-        # NOTE: expand to support indirect pointers when added
-        pass
+    # this method allows us to read the address at the next block_offset
+    # NOTE: needs to be extended with indirect pointers
+    def read_address(self, offset=''):
+        if (offset==''):
+            if (self.block_offset < self.NUMBER_OF_DIRECT_BLOCKS):
+                address = self.block_addresses[self.block_offset]
+                self.block_offset += 1
+                return address
+            else:
+                # INDIRECT BLOCKS
+                return NotImplemented
+        else:
+            if (offset < self.NUMBER_OF_DIRECT_BLOCKS):
+                address = self.block_addresses[self.block_offset]
+                self.block_offset = offset + 1
+                return address
+            else:
+                # INDIRECT BLOCKS
+                return NotImplemented
 
-    def read_directory_data(self,log):
-        # 1. iterate through block_addresses, load data into bytearray
-        # 2. load bytearray into children list
-        # NOTE: expand to support indirect pointers when addedf
-        pass
+    # this will convert the children entries to bytes
+    def children_to_bytes(self):
+        # get number of children
+        child_count = len(self.children)
+        # define bytearray
+        child_data = bytearray()
+        # add child count to bytearray
+        child_data.extend(pack("I", child_count))
+        # loop thruogh children and append their data line by line
+        for key, value in self.children.items():
+            line = str(key) + "|" + str(value) + "\n"
+            child_data.extend(line.encode('utf-8'))
+        # terminate data with an left arrow (<) which should not exist in this data
+        child_data.extend(b'\x3C')
+        return bytes(child_data)
 
-    # LINK DATA READ/WRITE
-    def read_link_data(self,log):
-        pass
-
-    def write_link_data(self,log):
-        pass
-
-
+    # this will convert the byte data to children entries
+    def bytes_to_children(self, data):
+        count = unpack("I",data[0:4])[0]
+        data = data[4:data.index(b'\x3C')]
+        for line in data.splitlines():
+            child_data = line.decode().split("|")
+            self.children[child_data[0]] = child_data[1]

@@ -1,6 +1,7 @@
 import errno
 from datetime import datetime
 from stat import *
+import math
 
 from .fs import CheckpointRegion
 from .s3_bucket import S3Bucket
@@ -9,6 +10,7 @@ from .fs import INode
 from .fs import BlockAddress
 
 from .fusell import FUSELL
+from errno import ENOENT
 
 
 class FuseApi(FUSELL):
@@ -53,14 +55,36 @@ class FuseApi(FUSELL):
         root_inode.inode_number = self._CR.next_inode_id()
         root_inode.mode = S_IFDIR | 0o777                  # directory with 777 chmod
         root_inode.hard_links = 2                          # "." and ".." make the first 2 hard links
+
         # 2. write root inode directory data to log
-        root_inode.log_directory_data(self._log)
+        # -- convert children to bytes
+        data = root_inode.children_to_bytes()
+        # -- cut bytes up into block_size units and write each unit storing addr to inode
+        number_blocks = math.ceil(len(data)/self._log.get_block_size()) 
+        for x in range(number_blocks):
+            block = data[x*self._log.get_block_size():(x+1)*self._log.get_block_size()]
+            address = self._log.write(block)
+            root_inode.write_address(address)
+
         # 3. write root inode to log
         root_inode_addr = self._log.write(root_inode.to_bytes())
         # 4. update CR inode_map to for "/"
         self._CR.inode_map[root_inode.inode_number] = root_inode_addr
         # 5. update CR root_inode_id for "/"
         self._CR.root_inode_id = root_inode.inode_number
+
+
+#        test_inode_id = self._CR.root_inode_id
+#        test_addr = self._CR.inode_map[test_inode_id]
+#        data = self._log.read(test_addr)
+#        test = INode()
+#        test = test.from_bytes(data)
+        # get data for children
+#        data = bytearray()
+#        for x in range(test.block_count):
+#            data.extend(self._log.read(test.read_address()))
+#        test.bytes_to_children(bytes(data))
+
 
         # might implement the above by defining a directory INode
         # and then writing it to the segment.
@@ -79,6 +103,32 @@ class FuseApi(FUSELL):
             reply_entry
             reply_err
         """
+
+        # get parent addresses from CR inode_map
+        # NOTE: need to determine if ENONET is correct
+#        try:
+#           parent_address = self._CR.inode_map[parent]
+#        except:
+#           self.reply_err(req, errno.ENOENT)
+
+        # load parent inode object
+#        parent_inode = INode()
+#        parent_inode = parent_inode.from_bytes(self._log.read(parent_address))
+#        data = bytearray()
+#        for x in range(test.block_count):
+#            data.extend(self._log.read(test.read_address()))
+#        parent_inode.bytes_to_children(bytes(data))
+
+        # obtain child inodeid via name
+#        try:
+#            child_inode = parent_inode.children[name]
+#        except:
+#            self.reply_err(req, errno.ENOENT)
+
+        # get child attributes
+
+        # return entry object for child
+
         self.reply_err(req, errno.ENOENT)
 
     def forget(self, req, ino, nlookup):
@@ -90,13 +140,18 @@ class FuseApi(FUSELL):
         self.reply_none(req)
 
     def getattr(self, req, ino, fi):
-        """Get file attributes
 
-        Valid replies:
-            reply_attr
-            reply_err
-        """
-        self.reply_err(req, errno.ENOENT)
+        # LOAD INODE FROM STORAGE
+
+        # BUILD ATTR (DICT) OBJECT
+        attr = dict()
+
+        # RETURN ATTR OBJECT
+
+        if attr:
+            self.reply_attr(req, attr, 1.0)
+        else:
+            self.reply_err(req, ENOENT)
 
     def setattr(self, req, ino, attr, to_set, fi):
         """Set file attributes
