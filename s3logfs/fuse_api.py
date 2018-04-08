@@ -7,6 +7,7 @@ import errno
 from datetime import datetime
 from stat import *
 import math
+from time import time
 
 from .fs import CheckpointRegion
 from .s3_bucket import S3Bucket
@@ -79,22 +80,6 @@ class FuseApi(FUSELL):
         # 5. update CR root_inode_id for "/"
         self._CR.root_inode_id = root_inode.inode_number
 
-
-#        test_inode_id = self._CR.root_inode_id
-#        test_addr = self._CR.inode_map[test_inode_id]
-#        data = self._log.read(test_addr)
-#        test = INode()
-#        test = test.from_bytes(data)
-        # get data for children
-#        data = bytearray()
-#        for x in range(test.block_count):
-#            data.extend(self._log.read(test.read_address()))
-#        test.bytes_to_children(bytes(data))
-
-
-        # might implement the above by defining a directory INode
-        # and then writing it to the segment.
-
     def destroy(self, userdata):
         """Clean up filesystem
 
@@ -117,7 +102,7 @@ class FuseApi(FUSELL):
             data.extend(self._log.read(parent_inode.read_address()))
         parent_inode.bytes_to_children(bytes(data))
 
-        # obtain child inodeid via name
+        # obtain child inodeid via name, if this fails, it should return an empty dict()
         try:
             child_inode_id = parent_inode.children[name]
             # obtain child address
@@ -185,13 +170,90 @@ class FuseApi(FUSELL):
         self.reply_err(req, errno.EROFS)
 
     def mkdir(self, req, parent, name, mode):
-        """Create a directory
+        print('mkdir:', parent, name, mode)
 
-        Valid replies:
-            reply_entry
-            reply_err
-        """
-        self.reply_err(req, errno.EROFS)
+        # 1. CREATE NEW DIRECTORY INODE
+        # - create new directory inode
+        newdir = INode()
+
+        # - obtain new inodeid from CheckpointRegion
+        newdir.inode_number = self._CR.next_inode_id()
+
+        # - set mode
+        newdir.mode = S_IFDIR | mode
+        print(newdir.mode)
+
+        # - set size / block info
+        newdir.size = self._log.get_block_size()
+        newdir.block_count = int(self._log.get_block_size() / 512)
+        newdir.block_size = self._log.get_block_size()
+
+        # - obtain uid/gid info via req
+        ctx = self.req_ctx(req)
+        newdir.uid = ctx['uid']
+        newdir.gid = ctx['gid']
+
+        # - set parent
+        newdir.parent = parent
+
+        # - set hard links to 2 (for "." and "..")
+        newdir.hard_links = 2
+
+        # 2. LOAD PARENT INODE
+        # - load inode
+        parent_address = self._CR.inode_map[parent]
+        parent_inode = INode()
+        parent_inode = parent_inode.from_bytes(self._log.read(parent_address))
+        data = bytearray()
+        for x in range(parent_inode.block_count):
+            data.extend(self._log.read(parent_inode.read_address()))
+        parent_inode.bytes_to_children(bytes(data))
+        # - increment hard_links by 1
+        parent_inode.hard_links += 1
+        # - add new directory to children
+        parent_inode.children[name] = newdir.inode_number
+
+        # 3. WRITE NEW DIRECTORY AND UPDATE INODE_MAP
+        # - write newdir data to log
+        data = newdir.children_to_bytes()
+        number_blocks = math.ceil(len(data)/self._log.get_block_size())
+        for x in range(number_blocks):
+            block = data[x*self._log.get_block_size():(x+1)*self._log.get_block_size()]
+            address = self._log.write(block)
+            newdir.write_address(address)
+        # - write newdir inode to log
+        newdir_inode_addr = self._log.write(newdir.to_bytes())   
+        # update CR inode_map for newdir
+        self._CR.inode_map[newdir.inode_number] = newdir_inode_addr
+
+        # 4. WRITE PARENT AND UPDATE INODE_MAP
+        # - write parent data to log
+        data = parent_inode.children_to_bytes()
+        number_blocks = math.ceil(len(data)/self._log.get_block_size())
+        for x in range(number_blocks):
+            block = data[x*self._log.get_block_size():(x+1)*self._log.get_block_size()]
+            address = self._log.write(block)
+            parent_inode.write_address(address)
+        # - write parent inode to log
+        parent_inode_addr = self._log.write(parent_inode.to_bytes())   
+        # - update CR inode_map for parent
+        self._CR.inode_map[parent_inode.inode_number] = parent_inode_addr
+
+        # 5. Create/Return entry object
+        # - get newdir attr object
+        attr = newdir.get_attr()
+        
+        if attr:
+            # - create entry
+            entry = dict(ino=newdir.inode_number,
+                attr=attr,
+                attr_timeout=1.0,
+                entry_timeout=1.0)
+            # reply with entry
+            self.reply_entry(req, entry)
+        else:
+            # reply with error
+            self.reply_err(req, errno.EROFS)
 
     def unlink(self, req, parent, name):
         """Remove a file

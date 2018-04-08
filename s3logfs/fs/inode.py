@@ -9,12 +9,14 @@ from collections import *
 
 class INode:
     NUMBER_OF_DIRECT_BLOCKS = 16
-    STRUCT_FORMAT = 'QQQIIIIILLL' # Plus block addresses
+    STRUCT_FORMAT = 'QQQQIIIIIfff' # Plus block addresses
     STRUCT = Struct(STRUCT_FORMAT)
 
     def __init__(self):
         # unique inode id
         self.inode_number = 0
+        # parent inode id, to make it easier to implement ".."
+        self.parent = 0
         # size of data (all 3 used by FUSE)
         self.size = 0                     # st_size - total bytes (file data, or pathname size for link)
         self.block_count = 0              # st_blocks - number of blocks (usually in 512-byte units)
@@ -33,14 +35,13 @@ class INode:
         # owner and group id's
         self.uid = 0                      # st_uid
         self.gid = 0                      # st_gid
-        # parent inode id, to make it easier to implement ".."
-        self.parent = 0
         # number of sub-directories in a directory includnig "." and ".."
         self.hard_links = 0               # st_nlink
         # file accessed timestamps
-        self.last_accessed_at = 0         # st_atime
-        self.last_modified_at = 0         # st_mtime
-        self.status_last_changed_at = 0   # st_ctime
+        now = time()
+        self.last_accessed_at = now       # st_atime
+        self.last_modified_at = now       # st_mtime
+        self.status_last_changed_at = now # st_ctime
         self.block_offset = 0
         self.block_addresses = self.NUMBER_OF_DIRECT_BLOCKS * [BlockAddress()]
         # for directory lookups, will be populated from data after inode is loaded
@@ -55,9 +56,11 @@ class INode:
         addresses_bytes = bytes[klass.STRUCT.size:]
         unpacked_values = klass.STRUCT.unpack(struct_bytes)
 
+        # pattern: QQQQIIIIIfff
         inode = klass()
         (
             inode.inode_number,
+            inode.parent,
             inode.size,
             inode.block_count,
             inode.block_size,    
@@ -79,8 +82,10 @@ class INode:
         return inode
 
     def to_bytes(self):
+        # pattern: QQQQIIIIIfff
         struct_bytes = self.STRUCT.pack(
             self.inode_number,
+            self.parent,
             self.size,
             self.block_count,
             self.block_size,    
