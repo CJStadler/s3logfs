@@ -124,6 +124,19 @@ class INode:
     def set_type(self, inode_type):
         self.mode = (self.mode ^ S_IFMT(self.mode)) | inode_ntype
 
+    # returns an attr dict object for inode, used by FUSE
+    def get_attr(self):
+        attr = dict(
+                 st_ino=self.inode_number,
+                 st_mode=self.mode,
+                 st_nlink=self.hard_links,
+                 st_uid=self.uid,
+                 st_gid=self.gid,
+                 st_atime=self.last_accessed_at,
+                 st_mtime=self.last_modified_at,
+                 st_ctime=self.status_last_changed_at)
+        return attr
+
     # permission check
     #
     #          READ     WRITE    EXECUTE

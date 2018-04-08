@@ -1,3 +1,8 @@
+#!/usr/bin/env python
+from __future__ import print_function, absolute_import, division
+
+import logging
+
 import errno
 from datetime import datetime
 from stat import *
@@ -35,6 +40,7 @@ class FuseApi(FUSELL):
         super().__init__(mountpoint, encoding=encoding)
 
     def init(self, userdata, conn):
+        print("FS:INIT")
 
         # init superblock
         
@@ -97,39 +103,43 @@ class FuseApi(FUSELL):
         pass
 
     def lookup(self, req, parent, name):
-        """Look up a directory entry by name and get its attributes.
-
-        Valid replies:
-            reply_entry
-            reply_err
-        """
+        print("FS:lookup", parent, name)
 
         # get parent addresses from CR inode_map
         # NOTE: need to determine if ENONET is correct
-#        try:
-#           parent_address = self._CR.inode_map[parent]
-#        except:
-#           self.reply_err(req, errno.ENOENT)
+        parent_address = self._CR.inode_map[parent]
 
         # load parent inode object
-#        parent_inode = INode()
-#        parent_inode = parent_inode.from_bytes(self._log.read(parent_address))
-#        data = bytearray()
-#        for x in range(test.block_count):
-#            data.extend(self._log.read(test.read_address()))
-#        parent_inode.bytes_to_children(bytes(data))
+        parent_inode = INode()
+        parent_inode = parent_inode.from_bytes(self._log.read(parent_address))
+        data = bytearray()
+        for x in range(parent_inode.block_count):
+            data.extend(self._log.read(parent_inode.read_address()))
+        parent_inode.bytes_to_children(bytes(data))
 
         # obtain child inodeid via name
-#        try:
-#            child_inode = parent_inode.children[name]
-#        except:
-#            self.reply_err(req, errno.ENOENT)
-
-        # get child attributes
+        try:
+            child_inode_id = parent_inode.children[name]
+            # obtain child address
+            child_address = self._CR.inode_map[child_inode_id]
+            # load child inode
+            child_inode = INode()
+            child_inode = child_inode.from_bytes(self._log.read(child_address))
+            # get child attributes
+            attr = child_inode.get_attr()
+        except:
+            attr = dict()
 
         # return entry object for child
-
-        self.reply_err(req, errno.ENOENT)
+        if attr:
+            entry = dict(
+                ino=child_inode_id,
+                attr=attr,
+                attr_timeout=1.0,
+                entry_timeout=1.0)
+            self.reply_entry(req, entry)
+        else:
+            self.reply_err(req, ENOENT)
 
     def forget(self, req, ino, nlookup):
         """Forget about an inode
@@ -140,14 +150,17 @@ class FuseApi(FUSELL):
         self.reply_none(req)
 
     def getattr(self, req, ino, fi):
+        print("FS:getattr", ino)
 
         # LOAD INODE FROM STORAGE
-
-        # BUILD ATTR (DICT) OBJECT
-        attr = dict()
+        inode_address = self._CR.inode_map[ino]
+        inode = INode()
+        inode = inode.from_bytes(self._log.read(inode_address))
+        
+        # obtain attr object from inode instance
+        attr = inode.get_attr()
 
         # RETURN ATTR OBJECT
-
         if attr:
             self.reply_attr(req, attr, 1.0)
         else:
