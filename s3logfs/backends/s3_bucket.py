@@ -1,3 +1,4 @@
+from contextlib import closing
 from boto3 import client
 
 
@@ -16,7 +17,7 @@ class S3Bucket:
 
     def name(self):
         return self._bucket_name
-        
+
     def create(self, acl='private', region=None):
         '''
         Creates the bucket. This succeeds even if the bucket already exists.
@@ -54,13 +55,14 @@ class S3Bucket:
             Bucket=self._bucket_name,
             Key=key
         )
-        return response['Body'].read()
+        with closing(response['Body']) as body:
+            return body.read()
 
     def _put_object(self, key, body):
         '''
         TODO: Handle errors
         '''
-        response = self._client.put_object(
+        self._client.put_object(
             Bucket=self._bucket_name,
             Key=key,
             Body=body

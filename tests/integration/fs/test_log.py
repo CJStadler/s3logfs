@@ -1,5 +1,5 @@
 from unittest import TestCase
-from s3logfs.backends import S3Bucket, DiskCache, MemoryCache
+from s3logfs.backends import S3Bucket, AsyncWriter, DiskCache, MemoryCache
 from s3logfs.fs import BlockAddress, Log
 
 
@@ -15,27 +15,29 @@ class TestLog(TestCase):
         expected_block_bytes = block_size * b'a'
 
         # First, write enough blocks to put a segment to S3
-        with DiskCache(bucket, 32) as disk_cache:
-            memory_cache = MemoryCache(disk_cache, 8)
-            log = Log(current_segment_id, memory_cache,
-                      block_size=block_size, blocks_per_segment=blocks_per_segment)
+        with AsyncWriter(bucket, 8, 4) as async_writer:
+            with DiskCache(async_writer, 32) as disk_cache:
+                memory_cache = MemoryCache(disk_cache, 8)
+                log = Log(current_segment_id, memory_cache,
+                          block_size=block_size, blocks_per_segment=blocks_per_segment)
 
-            for i in range(blocks_per_segment):
-                if i == address.offset:
-                    block_bytes = expected_block_bytes
-                else:
-                    block_bytes = block_size * b'x'
+                for i in range(blocks_per_segment):
+                    if i == address.offset:
+                        block_bytes = expected_block_bytes
+                    else:
+                        block_bytes = block_size * b'x'
 
-                log.write_block(block_bytes)
+                    log.write_block(block_bytes)
 
-            result = log.read_block(address) # Should be read from cache
-            self.assertEqual(result, expected_block_bytes)
+                result = log.read_block(address) # Should be read from cache
+                self.assertEqual(result, expected_block_bytes)
 
         # Attempt read from a fresh cache
-        with DiskCache(bucket, 32) as disk_cache:
-            memory_cache = MemoryCache(disk_cache, 8)
-            log = Log(current_segment_id + 1, memory_cache,
-                      block_size=block_size, blocks_per_segment=blocks_per_segment)
+        with AsyncWriter(bucket, 8, 4) as async_writer:
+            with DiskCache(async_writer, 32) as disk_cache:
+                memory_cache = MemoryCache(disk_cache, 8)
+                log = Log(current_segment_id + 1, memory_cache,
+                          block_size=block_size, blocks_per_segment=blocks_per_segment)
 
-            result = log.read_block(address)
-            self.assertEqual(result, expected_block_bytes)
+                result = log.read_block(address)
+                self.assertEqual(result, expected_block_bytes)
