@@ -70,6 +70,7 @@ class FuseApi(FUSELL):
         # -- cut bytes up into block_size units and write each unit storing addr to inode
         number_blocks = math.ceil(len(data)/self._log.get_block_size())
         root_inode.size = number_blocks * self._log.get_block_size()
+        print("ROOT SIZE", root_inode.size)
         root_inode.block_count = int(root_inode.size / 512)
         root_inode.block_size = self._log.get_block_size()
         for x in range(number_blocks):

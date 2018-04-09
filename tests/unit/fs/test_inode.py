@@ -1,5 +1,7 @@
 import unittest
 
+import math
+
 from time import time
 from s3logfs.fs import INode, BlockAddress
 from stat import S_IFDIR
@@ -10,21 +12,22 @@ class TestINode(unittest.TestCase):
         self.assertEqual(INode.NUMBER_OF_DIRECT_BLOCKS, 16)
 
     def test_struct_format(self):
-        self.assertEqual(INode.STRUCT_FORMAT, 'QQQQIIIIIfff')
+        self.assertEqual(INode.STRUCT_FORMAT, 'QQQQIIIIIddd')
 
     def test_to_and_from_bytes(self):
         inode = INode()
         inode.inode_number = 123
+        inode.parent = 1
         inode.size = 456
-        inode.block_count = 1
+        inode.block_count = int(math.ceil( inode.size / 512 ))
         inode.block_size = 4096
         inode.mode = S_IFDIR | 0o077
         inode.hard_links = 3
-        t = int(time())
-        inode.last_accessed_at = t - 1
-        inode.last_modified_at = t - 2
-        inode.status_last_changed_at = t - 3
-        inode.block_addresses[INode.NUMBER_OF_DIRECT_BLOCKS - 1] = \
+        t = time()
+        inode.last_accessed_at = t
+        inode.last_modified_at = t
+        inode.status_last_changed_at = t
+        inode.block_addresses[INode.NUMBER_OF_DIRECT_BLOCKS-1] = \
             BlockAddress(789, 99)
         out_bytes = inode.to_bytes()
 
@@ -38,6 +41,5 @@ class TestINode(unittest.TestCase):
         self.assertEqual(new_inode.hard_links, inode.hard_links)
         self.assertEqual(new_inode.last_accessed_at, inode.last_accessed_at)
         self.assertEqual(new_inode.last_modified_at, inode.last_modified_at)
-        self.assertEqual(new_inode.status_last_changed_at,
-                         inode.status_last_changed_at)
+        self.assertEqual(new_inode.status_last_changed_at, inode.status_last_changed_at)
         self.assertEqual(new_inode.block_addresses, inode.block_addresses)

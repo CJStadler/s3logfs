@@ -9,7 +9,7 @@ from collections import *
 
 class INode:
     NUMBER_OF_DIRECT_BLOCKS = 16
-    STRUCT_FORMAT = 'QQQQIIIIIfff' # Plus block addresses
+    STRUCT_FORMAT = 'QQQQIIIIIddd' # Plus block addresses
     STRUCT = Struct(STRUCT_FORMAT)
 
     def __init__(self):
@@ -50,10 +50,10 @@ class INode:
     @classmethod
     def from_bytes(klass, data):
         # trim off padding (anything inluding or after \x3C "<")
-        bytes = data[0:data.index(b'\x3C')]
+#        bytes = data[0:data.index(b'\x3C')]
         # pull data out of block of bytes
-        struct_bytes = bytes[:klass.STRUCT.size]
-        addresses_bytes = bytes[klass.STRUCT.size:]
+        struct_bytes = data[:klass.STRUCT.size]
+        addresses_bytes = data[klass.STRUCT.size:]
         unpacked_values = klass.STRUCT.unpack(struct_bytes)
 
         # pattern: QQQQIIIIIfff
@@ -134,6 +134,9 @@ class INode:
         attr = dict(
                  st_ino=self.inode_number,
                  st_mode=self.mode,
+                 st_size=self.size,
+                 st_blocks=self.block_count,
+                 st_blksize=self.block_size,
                  st_nlink=self.hard_links,
                  st_uid=self.uid,
                  st_gid=self.gid,
