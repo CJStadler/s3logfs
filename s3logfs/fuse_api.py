@@ -60,6 +60,7 @@ class FuseApi(FUSELL):
         # 1. create root inode
         root_inode = INode()
         root_inode.inode_number = self._CR.next_inode_id()
+        root_inode.parent = root_inode.inode_number        
         root_inode.mode = S_IFDIR | 0o777                  # directory with 777 chmod
         root_inode.hard_links = 2                          # "." and ".." make the first 2 hard links
 
@@ -67,7 +68,10 @@ class FuseApi(FUSELL):
         # -- convert children to bytes
         data = root_inode.children_to_bytes()
         # -- cut bytes up into block_size units and write each unit storing addr to inode
-        number_blocks = math.ceil(len(data)/self._log.get_block_size()) 
+        number_blocks = math.ceil(len(data)/self._log.get_block_size())
+        root_inode.size = number_blocks * self._log.get_block_size()
+        root_inode.block_count = int(root_inode.size / 512)
+        root_inode.block_size = self._log.get_block_size()
         for x in range(number_blocks):
             block = data[x*self._log.get_block_size():(x+1)*self._log.get_block_size()]
             address = self._log.write(block)
@@ -98,20 +102,21 @@ class FuseApi(FUSELL):
         parent_inode = INode()
         parent_inode = parent_inode.from_bytes(self._log.read(parent_address))
         data = bytearray()
-        for x in range(parent_inode.block_count):
-            data.extend(self._log.read(parent_inode.read_address()))
+        for x in range(int(parent_inode.size / parent_inode.block_size)):
+            addr = parent_inode.read_address(x)
+            data.extend(self._log.read(addr))
         parent_inode.bytes_to_children(bytes(data))
 
         # obtain child inodeid via name, if this fails, it should return an empty dict()
         try:
-            child_inode_id = parent_inode.children[name]
+            child_inode_id = int(parent_inode.children[name])
             # obtain child address
             child_address = self._CR.inode_map[child_inode_id]
             # load child inode
             child_inode = INode()
             child_inode = child_inode.from_bytes(self._log.read(child_address))
             # get child attributes
-            attr = child_inode.get_attr()
+            attr = child_inode.get_attr()         
         except:
             attr = dict()
 
@@ -181,7 +186,6 @@ class FuseApi(FUSELL):
 
         # - set mode
         newdir.mode = S_IFDIR | mode
-        print(newdir.mode)
 
         # - set size / block info
         newdir.size = self._log.get_block_size()
@@ -205,8 +209,8 @@ class FuseApi(FUSELL):
         parent_inode = INode()
         parent_inode = parent_inode.from_bytes(self._log.read(parent_address))
         data = bytearray()
-        for x in range(parent_inode.block_count):
-            data.extend(self._log.read(parent_inode.read_address()))
+        for x in range(int(parent_inode.size / parent_inode.block_size)):
+            data.extend(self._log.read(parent_inode.read_address(x)))
         parent_inode.bytes_to_children(bytes(data))
         # - increment hard_links by 1
         parent_inode.hard_links += 1
@@ -220,9 +224,9 @@ class FuseApi(FUSELL):
         for x in range(number_blocks):
             block = data[x*self._log.get_block_size():(x+1)*self._log.get_block_size()]
             address = self._log.write(block)
-            newdir.write_address(address)
+            newdir.write_address(address,x)
         # - write newdir inode to log
-        newdir_inode_addr = self._log.write(newdir.to_bytes())   
+        newdir_inode_addr = self._log.write(newdir.to_bytes()) 
         # update CR inode_map for newdir
         self._CR.inode_map[newdir.inode_number] = newdir_inode_addr
 
@@ -230,10 +234,12 @@ class FuseApi(FUSELL):
         # - write parent data to log
         data = parent_inode.children_to_bytes()
         number_blocks = math.ceil(len(data)/self._log.get_block_size())
+        parent_inode.size = number_blocks * self._log.get_block_size()
+        parent_inode.block_count = int(parent_inode.size / 512)
         for x in range(number_blocks):
             block = data[x*self._log.get_block_size():(x+1)*self._log.get_block_size()]
             address = self._log.write(block)
-            parent_inode.write_address(address)
+            parent_inode.write_address(address, x)
         # - write parent inode to log
         parent_inode_addr = self._log.write(parent_inode.to_bytes())   
         # - update CR inode_map for parent
@@ -316,13 +322,37 @@ class FuseApi(FUSELL):
         self.reply_err(req, errno.EROFS)
 
     def readdir(self, req, ino, size, off, fi):
-        """Read directory
+        print('readdir:', ino)
 
-        Valid replies:
-            reply_readdir
-            reply_err
-        """
-        self.reply_err(req, errno.ENOENT)
+        # 1. LOAD DIRECTORY INODE
+        directory_address = self._CR.inode_map[ino]
+        directory = INode()
+        directory = directory.from_bytes(self._log.read(directory_address))
+        data = bytearray()
+        number_blocks = int(directory.size / directory.block_size) 
+        for x in range(number_blocks):
+            data.extend(self._log.read(directory.read_address(x)))
+        directory.bytes_to_children(bytes(data))
+
+        # 2. BUILD DEFUALT LIST OF ENTRIES  
+        entries = [
+            ('.', {'st_ino': directory.inode_number, 'st_mode': S_IFDIR}),
+            ('..', {'st_ino': directory.parent, 'st_mode': S_IFDIR})]
+
+        # 3. ADD CHILDREN TO LIST
+        for k,v in directory.children.items():
+            # get child address
+            child_name = k
+            child_addr = self._CR.inode_map[int(v)]
+            # load child node
+            child_inode = INode()
+            child_inode = child_inode.from_bytes(self._log.read(child_addr))
+            # set attr object
+            child_attr = child_inode.get_attr()
+            # add inode/attr to entries
+            entries.append((child_name,child_attr))
+
+        self.reply_readdir(req, size, off, entries)
 
     def access(self, req, ino, mask):
         """Check file access permissions

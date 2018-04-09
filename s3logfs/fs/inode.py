@@ -204,7 +204,7 @@ class INode:
                 return NotImplemented
         else:
             if (offset < self.NUMBER_OF_DIRECT_BLOCKS):
-                address = self.block_addresses[self.block_offset]
+                address = self.block_addresses[offset]
                 self.block_offset = offset + 1
                 return address
             else:
