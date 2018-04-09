@@ -307,7 +307,7 @@ class FuseApi(FUSELL):
         Valid replies:
             reply_err
         """
-        self.reply_err(req, errno.EROFS)
+        self.reply_err(req, 0)
 
     def link(self, req, ino, newparent, newname):
         """Create a hard link
