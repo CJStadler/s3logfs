@@ -49,8 +49,7 @@ class INode:
 
     @classmethod
     def from_bytes(klass, data):
-        # trim off padding (anything inluding or after \x3C "<")
-#        bytes = data[0:data.index(b'\x3C')]
+
         # pull data out of block of bytes
         struct_bytes = data[:klass.STRUCT.size]
         addresses_bytes = data[klass.STRUCT.size:]
@@ -103,9 +102,6 @@ class INode:
         for i in range(self.NUMBER_OF_DIRECT_BLOCKS):
             address = self.block_addresses[i]
             data.extend(address.to_bytes())
-
-        # end data with "<"
-        data.extend(b'\x3C')
 
         return bytes(data)
 
