@@ -270,12 +270,36 @@ class FuseApi(FUSELL):
         self.reply_err(req, errno.EROFS)
 
     def rmdir(self, req, parent, name):
-        """Remove a directory
 
-        Valid replies:
-            reply_err
-        """
-        self.reply_err(req, errno.EROFS)
+        # 1. LOAD PARENT INODE
+        # - load inode
+        parent_address = self._CR.inode_map[parent]
+        parent_inode = INode()
+        parent_inode = parent_inode.from_bytes(self._log.read(parent_address))
+        data = bytearray()
+        for x in range(int(parent_inode.size / parent_inode.block_size)):
+            data.extend(self._log.read(parent_inode.read_address(x)))
+        parent_inode.bytes_to_children(bytes(data))
+
+        # remove directory from parents children
+        parent_inode.children.pop(name)
+
+        # write parent data
+        data = parent_inode.children_to_bytes()
+        number_blocks = math.ceil(len(data)/self._log.get_block_size())
+        parent_inode.size = number_blocks * self._log.get_block_size()
+        parent_inode.block_count = int(parent_inode.size / 512)
+        for x in range(number_blocks):
+            block = data[x*self._log.get_block_size():(x+1)*self._log.get_block_size()]
+            address = self._log.write(block)
+            parent_inode.write_address(address, x)
+        # - write parent inode to log
+        parent_inode_addr = self._log.write(parent_inode.to_bytes())   
+        # - update CR inode_map for parent
+        self._CR.inode_map[parent_inode.inode_number] = parent_inode_addr
+
+        # return no error
+        self.reply_err(req, 0)
 
     def rename(self, req, parent, name, newparent, newname):
         """Rename a file
