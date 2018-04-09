@@ -158,13 +158,52 @@ class FuseApi(FUSELL):
             self.reply_err(req, ENOENT)
 
     def setattr(self, req, ino, attr, to_set, fi):
-        """Set file attributes
+        print('setattr:', ino, to_set)
 
-        Valid replies:
-            reply_attr
-            reply_err
-        """
-        self.reply_err(req, errno.EROFS)
+        # LOAD INODE FROM STORAGE
+        inode_address = self._CR.inode_map[ino]
+        inode = INode()
+        inode = inode.from_bytes(self._log.read(inode_address))
+        
+        if inode.get_attr():
+            # iterate through to_set key's to update inode
+            for key in to_set:
+                # handle st_mode
+                if key == "st_mode":
+                    # keep current IFMT, replace IMODE
+                    inode.mode = S_IFMT(inode.mode) | S_IMODE(attr["st_mode"])
+                elif key == "st_size":
+                    inode.size = attr["st_size"]
+                elif key == "st_blocks":
+                    inode.block_count = attr["st_blocks"]
+                elif key == "st_blksize":
+                    inode.block_size = attr["st_blksize"]
+                elif key == "st_nlink":
+                    inode.hard_links = attr["st_nlink"]
+                elif key == "st_uid":
+                    inode.uid = attr["st_uid"]
+                elif key == "st_gid":
+                    inode.gid = attr["st_gid"]
+                elif key == "st_atime":
+                    inode.last_accessed_at = attr["st_atime"]
+                elif key == "st_mtime":
+                    inode.last_modified_at = attr["st_mtime"]
+                elif key == "st_ctime":
+                    inode.status_last_changed_at = attr["st_ctime"]
+
+            # write modified INODE to storage
+            inode_addr = self._log.write(inode.to_bytes())
+
+            # update CR inode_map address
+            self._CR.inode_map[inode.inode_number] = inode_addr
+
+            # get modified attr object
+            inode_attr = inode.get_attr()
+
+            # return reply_attr wtih modified inode_attr
+            self.reply_attr(req, inode_attr, 1.0)
+        else:
+            self.reply_err(req, ENOENT)
 
     def mknod(self, req, parent, name, mode, rdev):
         """Create file node
