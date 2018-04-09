@@ -56,7 +56,7 @@ class INode:
         addresses_bytes = data[klass.STRUCT.size:]
         unpacked_values = klass.STRUCT.unpack(struct_bytes)
 
-        # pattern: QQQQIIIIIfff
+        # pattern: QQQQIIIIIddd
         inode = klass()
         (
             inode.inode_number,
@@ -82,7 +82,7 @@ class INode:
         return inode
 
     def to_bytes(self):
-        # pattern: QQQQIIIIIfff
+        # pattern: QQQQIIIIIddd
         struct_bytes = self.STRUCT.pack(
             self.inode_number,
             self.parent,

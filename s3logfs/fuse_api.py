@@ -285,6 +285,9 @@ class FuseApi(FUSELL):
         # remove directory from parents children
         parent_inode.children.pop(name)
 
+        # decrement parent hard_links
+        parent_inode.hard_links -= 1
+
         # write parent data
         data = parent_inode.children_to_bytes()
         number_blocks = math.ceil(len(data)/self._log.get_block_size())
