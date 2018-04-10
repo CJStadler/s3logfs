@@ -212,24 +212,19 @@ class INode:
 
     # this will convert the children entries to bytes
     def children_to_bytes(self):
-        # get number of children
-        child_count = len(self.children)
-        # define bytearray
-        child_data = bytearray()
-        # add child count to bytearray
-        child_data.extend(pack("I", child_count))
-        # loop thruogh children and append their data line by line
-        for key, value in self.children.items():
-            line = str(key) + "|" + str(value) + "\n"
-            child_data.extend(line.encode('utf-8'))
-        # terminate data with an left arrow (<) which should not exist in this data
-        child_data.extend(b'\x3C')
-        return bytes(child_data)
+        # iterate through self.children and store the key|value
+        # pairs in a string, delimited by |
+        data = ""
+        for key,value in self.children.items():
+            data += str(key) + "|" + str(value) + "\n"
+        data += "\0"
+        return data.encode('utf-8')
 
     # this will convert the byte data to children entries
-    def bytes_to_children(self, data):
-        count = unpack("I",data[0:4])[0]
-        data = data[4:data.index(b'\x3C')]
+    def bytes_to_children(self, bytedata):
+        data = bytedata.decode('utf-8')
+        data = data[0:data.find("\0")]
         for line in data.splitlines():
-            child_data = line.decode().split("|")
+            child_data = line.split("|")
             self.children[child_data[0]] = child_data[1]
+

@@ -85,6 +85,19 @@ class FuseApi(FUSELL):
         # 5. update CR root_inode_id for "/"
         self._CR.root_inode_id = root_inode.inode_number
 
+    def load_inode(self, inode_id):
+        # obtain inode address from imap
+        inode_address = self._CR.inode_map[inode_id]
+
+        # define default inode
+        inode = INode()
+
+        # read inode data from log
+        inode_data = self._log.read(inode_address)
+
+        # load inode from log
+        return inode.from_bytes(inode_data)
+ 
     def destroy(self, userdata):
         """Clean up filesystem
 
@@ -95,13 +108,10 @@ class FuseApi(FUSELL):
     def lookup(self, req, parent, name):
         print("FS:lookup", parent, name)
 
-        # get parent addresses from CR inode_map
-        # NOTE: need to determine if ENONET is correct
-        parent_address = self._CR.inode_map[parent]
+        # load parent inode
+        parent_inode = self.load_inode(parent)
 
-        # load parent inode object
-        parent_inode = INode()
-        parent_inode = parent_inode.from_bytes(self._log.read(parent_address))
+        # load directory children
         data = bytearray()
         for x in range(int(parent_inode.size / parent_inode.block_size)):
             addr = parent_inode.read_address(x)
@@ -111,11 +121,10 @@ class FuseApi(FUSELL):
         # obtain child inodeid via name, if this fails, it should return an empty dict()
         try:
             child_inode_id = int(parent_inode.children[name])
-            # obtain child address
-            child_address = self._CR.inode_map[child_inode_id]
+
             # load child inode
-            child_inode = INode()
-            child_inode = child_inode.from_bytes(self._log.read(child_address))
+            child_inode = self.load_inode(child_inode_id)
+
             # get child attributes
             attr = child_inode.get_attr()         
         except:
@@ -144,9 +153,7 @@ class FuseApi(FUSELL):
         print("FS:getattr", ino)
 
         # LOAD INODE FROM STORAGE
-        inode_address = self._CR.inode_map[ino]
-        inode = INode()
-        inode = inode.from_bytes(self._log.read(inode_address))
+        inode = self.load_inode(ino)
         
         # obtain attr object from inode instance
         attr = inode.get_attr()
@@ -161,9 +168,7 @@ class FuseApi(FUSELL):
         print('setattr:', ino, to_set)
 
         # LOAD INODE FROM STORAGE
-        inode_address = self._CR.inode_map[ino]
-        inode = INode()
-        inode = inode.from_bytes(self._log.read(inode_address))
+        inode = self.load_inode(ino)
         
         if inode.get_attr():
             # iterate through to_set key's to update inode
@@ -245,9 +250,7 @@ class FuseApi(FUSELL):
 
         # 2. LOAD PARENT INODE
         # - load inode
-        parent_address = self._CR.inode_map[parent]
-        parent_inode = INode()
-        parent_inode = parent_inode.from_bytes(self._log.read(parent_address))
+        parent_inode = self.load_inode(parent)
         data = bytearray()
         for x in range(int(parent_inode.size / parent_inode.block_size)):
             data.extend(self._log.read(parent_inode.read_address(x)))
@@ -313,9 +316,7 @@ class FuseApi(FUSELL):
 
         # 1. LOAD PARENT INODE
         # - load inode
-        parent_address = self._CR.inode_map[parent]
-        parent_inode = INode()
-        parent_inode = parent_inode.from_bytes(self._log.read(parent_address))
+        parent_inode = self.load_inode(parent)
         data = bytearray()
         for x in range(int(parent_inode.size / parent_inode.block_size)):
             data.extend(self._log.read(parent_inode.read_address(x)))
@@ -392,9 +393,7 @@ class FuseApi(FUSELL):
         print('readdir:', ino)
 
         # 1. LOAD DIRECTORY INODE
-        directory_address = self._CR.inode_map[ino]
-        directory = INode()
-        directory = directory.from_bytes(self._log.read(directory_address))
+        directory = self.load_inode(ino)
         data = bytearray()
         number_blocks = int(directory.size / directory.block_size) 
         for x in range(number_blocks):
@@ -408,12 +407,9 @@ class FuseApi(FUSELL):
 
         # 3. ADD CHILDREN TO LIST
         for k,v in directory.children.items():
-            # get child address
+            # load child inode
             child_name = k
-            child_addr = self._CR.inode_map[int(v)]
-            # load child node
-            child_inode = INode()
-            child_inode = child_inode.from_bytes(self._log.read(child_addr))
+            child_inode = self.load_inode(int(v))
             # set attr object
             child_attr = child_inode.get_attr()
             # add inode/attr to entries
