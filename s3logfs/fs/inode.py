@@ -7,6 +7,8 @@ from stat import *
 from time import time
 from collections import *
 
+import pickle
+
 class INode:
     NUMBER_OF_DIRECT_BLOCKS = 16
     STRUCT_FORMAT = 'QQQQIIIIIddd' # Plus block addresses
@@ -212,19 +214,16 @@ class INode:
 
     # this will convert the children entries to bytes
     def children_to_bytes(self):
-        # iterate through self.children and store the key|value
-        # pairs in a string, delimited by |
-        data = ""
-        for key,value in self.children.items():
-            data += str(key) + "|" + str(value) + "\n"
-        data += "\0"
-        return data.encode('utf-8')
+        
+        child_data = pickle.dumps(self.children)
+        byte_count = len(child_data)
+        data = bytearray()
+        data.extend(pack("I",byte_count))
+        data.extend(child_data)
+        return bytes(data)
 
     # this will convert the byte data to children entries
     def bytes_to_children(self, bytedata):
-        data = bytedata.decode('utf-8')
-        data = data[0:data.find("\0")]
-        for line in data.splitlines():
-            child_data = line.split("|")
-            self.children[child_data[0]] = child_data[1]
+        byte_count = unpack("I",bytedata[0:4])[0]
+        self.children = pickle.loads(bytedata[4:byte_count+4])
 
