@@ -54,20 +54,25 @@ class FuseApi(FUSELL):
         self._bucket = S3Bucket(self._bucket_name);
 
         # init Log
-        self._log = Log(self._CR.next_segment_id(), self._bucket, self._CR.block_size, self._CR.segment_size)
+        self._log = Log(
+                      self._CR.next_segment_id(), 
+                      self._bucket, 
+                      self._CR.block_size, 
+                      self._CR.segment_size)
 
         # need to init empty file system
         # 1. create root inode
         root_inode = INode()
         root_inode.inode_number = self._CR.next_inode_id()
         root_inode.parent = root_inode.inode_number        
-        root_inode.mode = S_IFDIR | 0o777                  # directory with 777 chmod
-        root_inode.hard_links = 2                          # "." and ".." make the first 2 hard links
+        root_inode.mode = S_IFDIR | 0o777        # directory with 777 chmod
+        root_inode.hard_links = 2     # "." and ".." make the first 2 hard links
 
         # 2. write root inode directory data to log
         # -- convert children to bytes
         data = root_inode.children_to_bytes()
-        # -- cut bytes up into block_size units and write each unit storing addr to inode
+        # -- cut bytes up into block_size units and write each 
+        # -- unit storing addr to inode
         number_blocks = math.ceil(len(data)/self._log.get_block_size())
         root_inode.size = number_blocks * self._log.get_block_size()
         print("ROOT SIZE", root_inode.size)
@@ -99,6 +104,7 @@ class FuseApi(FUSELL):
         return inode.from_bytes(inode_data)
  
     def destroy(self, userdata):
+        print('destroy:',userdata)
         """Clean up filesystem
 
         There's no reply to this method
@@ -142,11 +148,20 @@ class FuseApi(FUSELL):
             self.reply_err(req, ENOENT)
 
     def forget(self, req, ino, nlookup):
-        """Forget about an inode
+        print('forget:', req, ino, nlookup)
+        
+        # removes inode form inode_map
+        # this is done here because the inode must be 
+        # maintained until all lookups have been cleared, FUSE
+        # calls 'forget' once this occurs. 
+        # Ex: create directory, cd into directory, delete directory in
+        #     another terminal, in first terminal you can still list the
+        #     directories contents (though it will show as empty, it wont error)
+        #     in the 2nd terminal the directory will no longer show up. Once you
+        #     leave the directory on the 1st terminal, forget is called and 
+        #     deletes the inode
+        del self._CR.inode_map[ino]   
 
-        Valid replies:
-            reply_none
-        """
         self.reply_none(req)
 
     def getattr(self, req, ino, fi):
@@ -195,6 +210,10 @@ class FuseApi(FUSELL):
                     inode.last_modified_at = attr["st_mtime"]
                 elif key == "st_ctime":
                     inode.status_last_changed_at = attr["st_ctime"]
+                elif key == "st_dev":
+                    inode.size = attr["st_dev"]
+                elif key == "st_rdev":
+                    inode.size = attr["st_rdev"]
 
             # write modified INODE to storage
             inode_addr = self._log.write(inode.to_bytes())
@@ -211,13 +230,94 @@ class FuseApi(FUSELL):
             self.reply_err(req, ENOENT)
 
     def mknod(self, req, parent, name, mode, rdev):
-        """Create file node
+        print('mknod:', parent, name)
 
-        Valid replies:
-            reply_entry
-            reply_err
-        """
-        self.reply_err(req, errno.EROFS)
+        # 1. CREATE NEW FILE INODE
+        new_node = INode()
+        new_node.inode_number = self._CR.next_inode_id()
+
+        # - obtain uid/gid info via req
+        ctx = self.req_ctx(req)
+        new_node.uid = ctx['uid']
+        new_node.gid = ctx['gid']
+
+        # - set mode
+        new_node.mode = mode
+
+        # - set parent
+        new_node.parent = parent
+
+        # - set hard links to 2 (for "." and "..")
+        new_node.hard_links = 1
+
+        # - set time attributes
+        now = time()
+        new_node.last_accessed_at = now
+        new_node.last_modified_at = now 
+        new_node.status_last_changed_at = now
+
+        # set rdev
+        new_node.rdev = rdev
+
+        # 2. LOAD PARENT INODE
+        # - load inode
+        parent_inode = self.load_inode(parent)
+        data = bytearray()
+        for x in range(int(parent_inode.size / parent_inode.block_size)):
+            data.extend(self._log.read(parent_inode.read_address(x)))
+        parent_inode.bytes_to_children(bytes(data))
+        # - increment hard_links by 1
+        parent_inode.hard_links += 1
+        # - add new directory to children
+        parent_inode.children[name] = new_node.inode_number
+
+        # 3. WRITE NEW DIRECTORY AND UPDATE INODE_MAP
+        # - write new_node data to log
+        data = new_node.children_to_bytes()
+        number_blocks = math.ceil(len(data)/self._log.get_block_size())
+        for x in range(number_blocks):
+            start = x*self._log.get_block_size()
+            end = (x+1)*self._log.get_block_size()
+            block = data[start:end]
+            address = self._log.write(block)
+            new_node.write_address(address,x)
+        # - write new_node inode to log
+        new_inode_addr = self._log.write(new_node.to_bytes()) 
+        # update CR inode_map for new_node
+        self._CR.inode_map[new_node.inode_number] = new_inode_addr
+
+        # 4. WRITE PARENT AND UPDATE INODE_MAP
+        # - write parent data to log
+        data = parent_inode.children_to_bytes()
+        number_blocks = math.ceil(len(data)/self._log.get_block_size())
+        parent_inode.size = number_blocks * self._log.get_block_size()
+        parent_inode.block_count = int(parent_inode.size / 512)
+        for x in range(number_blocks):
+            start = x*self._log.get_block_size()
+            end = (x+1)*self._log.get_block_size()
+            block = data[start:end]
+            address = self._log.write(block)
+            parent_inode.write_address(address, x)
+        # - write parent inode to log
+        parent_inode_addr = self._log.write(parent_inode.to_bytes())   
+        # - update CR inode_map for parent
+        self._CR.inode_map[parent_inode.inode_number] = parent_inode_addr
+
+        # 5. Create/Return entry object
+        # - get new_node attr object
+        attr = new_node.get_attr()
+        
+        if attr:
+            # - create entry
+            entry = dict(ino=new_node.inode_number,
+                attr=attr,
+                attr_timeout=1.0,
+                entry_timeout=1.0)
+            # reply with entry
+            self.reply_entry(req, entry)
+        else:
+            # reply with error
+            self.reply_err(req, errno.EROFS)
 
     def mkdir(self, req, parent, name, mode):
         print('mkdir:', parent, name, mode)
@@ -305,12 +405,42 @@ class FuseApi(FUSELL):
             self.reply_err(req, errno.EROFS)
 
     def unlink(self, req, parent, name):
-        """Remove a file
+        print('unlink:', req, parent, name)
+        
+        # 1. LOAD PARENT INODE
+        # - load inode
+        parent_inode = self.load_inode(parent)
+        data = bytearray()
+        for x in range(int(parent_inode.size / parent_inode.block_size)):
+            data.extend(self._log.read(parent_inode.read_address(x)))
+        parent_inode.bytes_to_children(bytes(data))
 
-        Valid replies:
-            reply_err
-        """
-        self.reply_err(req, errno.EROFS)
+        # remove inode from parents children
+        inode = parent_inode.children.pop(name)
+
+        # write parent data
+        data = parent_inode.children_to_bytes()
+        number_blocks = math.ceil(len(data)/self._log.get_block_size())
+        parent_inode.size = number_blocks * self._log.get_block_size()
+        parent_inode.block_count = int(parent_inode.size / 512)
+        for x in range(number_blocks):
+            start = x*self._log.get_block_size()
+            end = (x+1)*self._log.get_block_size()
+            block = data[start:end]
+            address = self._log.write(block)
+            parent_inode.write_address(address, x)
+        # - write parent inode to log
+        parent_inode_addr = self._log.write(parent_inode.to_bytes())   
+        # - update CR inode_map for parent
+        self._CR.inode_map[parent_inode.inode_number] = parent_inode_addr
+
+        # NOTE: we do not remove the unlinked inode from the inode_map here
+        #       it should be handled by the forget call
+
+        # return no error
+        self.reply_err(req, 0)
+
+        #self.reply_err(req, errno.EROFS)
 
     def rmdir(self, req, parent, name):
 
@@ -323,7 +453,7 @@ class FuseApi(FUSELL):
         parent_inode.bytes_to_children(bytes(data))
 
         # remove directory from parents children
-        parent_inode.children.pop(name)
+        inode = parent_inode.children.pop(name)
 
         # decrement parent hard_links
         parent_inode.hard_links -= 1
@@ -346,6 +476,7 @@ class FuseApi(FUSELL):
         self.reply_err(req, 0)
 
     def rename(self, req, parent, name, newparent, newname):
+        print('rename:',req,parent,name,newparent,newname)
         """Rename a file
 
         Valid replies:
@@ -354,6 +485,7 @@ class FuseApi(FUSELL):
         self.reply_err(req, 0)
 
     def link(self, req, ino, newparent, newname):
+        print('link:',req,ino,newparent,newname)
         """Create a hard link
 
         Valid replies:
@@ -363,15 +495,16 @@ class FuseApi(FUSELL):
         self.reply_err(req, errno.EROFS)
 
     def open(self, req, ino, fi):
-        """Open a file
-
-        Valid replies:
-            reply_open
-            reply_err
-        """
-        self.reply_err(req, errno.EIO)
+        print('open:', req, ino)
+        
+        # verify inode exists, return open reply or error
+        if self._CR.inode_exists(ino):
+            self.reply_open(req, fi)
+        else:
+            self.reply_err(req, errno.EIO)
 
     def read(self, req, ino, size, off, fi):
+        print('read:', req, ino, size, off)
         """Read data
 
         Valid replies:
@@ -381,13 +514,40 @@ class FuseApi(FUSELL):
         self.reply_err(req, errno.EIO)
 
     def write(self, req, ino, buf, off, fi):
-        """Write data
+        print('write:', req, ino, len(buf), off)
 
-        Valid replies:
-            reply_write
-            reply_err
-        """
-        self.reply_err(req, errno.EROFS)
+        # 1. LOAD INODE
+        inode = self.load_inode(ino)
+
+        # 2. Write buffer (buf) to log in blocksize units updating
+        #    block_addresess in inode to reflect data positioning in file.
+        block_count = math.ceil(len(buf) / self._log.get_block_size())
+        # -- get file_offset, off should be evenly divisible by block_size
+        file_offset = off // self._log.get_block_size()
+        # furthest write
+        write_offset = 0
+        for x in range(block_count):
+            start = x*self._log.get_block_size()
+            end = (x+1)*self._log.get_block_size()
+            block = buf[start:end]
+            address = self._log.write(block)
+            inode.write_address(address, file_offset + x)           
+
+        # 3. Increase Size attribute if file grew
+        max_write_size = len(buf) + (file_offset * self._log.get_block_size())
+        if (max_write_size > inode.size):
+            inode.size = max_write_size
+            inode.block_count = math.ceil(max_write_size / 512)
+
+        # 3. Write Inode to log
+        inode_addr = self._log.write(inode.to_bytes())
+
+        # 4. Update CR Inode Map
+        self._CR.inode_map[ino] = inode_addr
+
+        self.reply_write(req, len(buf))
+
+        # self.reply_err(req, errno.EROFS)
 
     def readdir(self, req, ino, size, off, fi):
         print('readdir:', ino)
@@ -418,6 +578,7 @@ class FuseApi(FUSELL):
         self.reply_readdir(req, size, off, entries)
 
     def access(self, req, ino, mask):
+        print('access:', req, ino, mask)
         """Check file access permissions
 
         Valid replies:
@@ -426,6 +587,7 @@ class FuseApi(FUSELL):
         self.reply_err(req, errno.ENOSYS)
 
     def create(self, req, parent, name, mode, fi):
+        print('create:',req,parent,name,mode)
         """Create and open a file
 
         Valid replies:
@@ -433,3 +595,85 @@ class FuseApi(FUSELL):
             reply_err
         """
         self.reply_err(req, errno.ENOSYS)
+
+
+    # ************
+    # adding other possible functions which we may need to implement
+    # based on the fusell.py code and libfuse library information
+    # ************
+
+    def readlink(self, req, ino):
+        print('readlink:', req, ino)
+
+        # error because its not implemented
+        self.reply_err(req,errno.ENOENT)
+
+    def release(self, req, ino, fi):
+        print('release:', req, ino, fi)
+
+        # error because its not implemented
+        self.reply_err(req,errno.ENOSYS)
+
+    def flush(self, req, ino, fi):
+        print('flush:', req, ino, fi)
+
+        # error because its not implemented
+        self.reply_err(req,errno.ENOSYS)
+
+    def statfs(self, req, ino):
+        print('statfs:', req, ino)
+
+        # error because its not implemented
+        self.reply_err(req,errno.ENOSYS)
+
+    def listxattr(self, req, ino, size):
+        print('listxattr:', req, ino, size)
+
+        # error because its not implemented
+        self.reply_err(req,errno.ENOSYS)
+
+    def setxattr(self, req, ino, name, value, size, flags):
+        print('setxattr:', req, ino, name, value, size, flags)
+
+        # error because its not implemented
+        self.reply_err(req,errno.ENOSYS)
+
+    def getxattr(self, req, ino, name, size):
+        print('getxattr:', req, ino, name, size)
+
+        # error because its not implemented
+        self.reply_err(req,errno.ENOSYS)
+
+    def removexattr(self, req, ino, name):
+        print('removexattr:', req, ino, name)
+
+        # error because its not implemented
+        self.reply_err(req,errno.ENOSYS)
+
+    def symlink(self, req, link, parent, name):
+        print('symlink:', req, link, parent, name)
+        # error ENOENT to stop process
+        self.reply_err(req,errno.EROFS)
+
+# following functions may not be required, but if we have time we can implement
+# them for more functionality
+
+##    def opendir(self, req, ino, fi):
+##        print('opendir:', req, ino, fi)
+##        # error because its not implemented
+##        self.reply_err(req,errno.ENOSYS)
+
+##    def releasedir(self, req, ino, fi):
+##        print('releasedir:', req, ino, fi)
+##        # error because its not implemented
+##        self.reply_err(req,errno.ENOSYS)
+
+##    def fsync(self, req, ino, datasync, fi):
+##        print('fsync:', req, ino, datasync, fi)
+##        # return no error
+##        self.reply_err(req,0)
+
+##    def fsyncdir(self, req, ino, datasync, fi):
+##        print('fsyncdir:', req, ino, datasync, fi)
+##        # return no error
+##        self.reply_err(req,0)

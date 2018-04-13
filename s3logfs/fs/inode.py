@@ -11,7 +11,7 @@ import pickle
 
 class INode:
     NUMBER_OF_DIRECT_BLOCKS = 16
-    STRUCT_FORMAT = 'QQQQIIIIIddd' # Plus block addresses
+    STRUCT_FORMAT = 'QQQQIIIIIIIddd' # Plus block addresses
     STRUCT = Struct(STRUCT_FORMAT)
 
     def __init__(self):
@@ -20,8 +20,8 @@ class INode:
         # parent inode id, to make it easier to implement ".."
         self.parent = 0
         # size of data (all 3 used by FUSE)
-        self.size = 0                     # st_size - total bytes (file data, or pathname size for link)
-        self.block_count = 0              # st_blocks - number of blocks (usually in 512-byte units)
+        self.size = 0                     # st_size - total bytes (file data)
+        self.block_count = 0              # st_blocks - number of 512byte blocks
         self.block_size = 0               # st_blksize
         # st_mode (file type + permissions combined via masking)
         #   S_IFMT     0o170000   bit mask for the file type bit field
@@ -39,6 +39,9 @@ class INode:
         self.gid = 0                      # st_gid
         # number of sub-directories in a directory includnig "." and ".."
         self.hard_links = 0               # st_nlink
+        # dev & rdev are for device support
+        self.dev = 0                      # st_dev
+        self.rdev = 0                     # st_rdev
         # file accessed timestamps
         now = time()
         self.last_accessed_at = now       # st_atime
@@ -57,7 +60,7 @@ class INode:
         addresses_bytes = data[klass.STRUCT.size:]
         unpacked_values = klass.STRUCT.unpack(struct_bytes)
 
-        # pattern: QQQQIIIIIddd
+        # pattern: QQQQIIIIIIIddd
         inode = klass()
         (
             inode.inode_number,
@@ -69,6 +72,8 @@ class INode:
             inode.uid,
             inode.gid,
             inode.hard_links,
+            inode.dev,
+            inode.rdev,
             inode.last_accessed_at,
             inode.last_modified_at,
             inode.status_last_changed_at
@@ -94,6 +99,8 @@ class INode:
             self.uid,
             self.gid,
             self.hard_links,
+            self.dev,
+            self.rdev,
             self.last_accessed_at,
             self.last_modified_at,
             self.status_last_changed_at
@@ -138,6 +145,8 @@ class INode:
                  st_nlink=self.hard_links,
                  st_uid=self.uid,
                  st_gid=self.gid,
+                 st_dev=self.dev,
+                 st_rdev=self.rdev,
                  st_atime=self.last_accessed_at,
                  st_mtime=self.last_modified_at,
                  st_ctime=self.status_last_changed_at)

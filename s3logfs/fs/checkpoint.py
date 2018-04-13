@@ -25,3 +25,10 @@ class CheckpointRegion:
     self._segment_counter += 1
     return self._segment_counter
 
+  # check if inode exists
+  def inode_exists(self, inode_number):
+    if inode_number in self.inode_map:
+      return True
+    else:
+      return False
+
