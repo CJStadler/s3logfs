@@ -41,3 +41,31 @@ class TestLog(TestCase):
 
                 result = log.read_block(address)
                 self.assertEqual(result, expected_block_bytes)
+
+    def test_written_blocks_should_be_in_s3_after_flush(self):
+        current_segment_id = 123
+        block_size = 64
+        blocks_per_segment = 8
+        address = BlockAddress(current_segment_id, 0)
+        bucket = S3Bucket(self.BUCKET_NAME)
+        expected_block_bytes = block_size * b'a'
+
+        # Write a single block and flush
+        with AsyncWriter(bucket, 8, 4) as async_writer:
+            with DiskCache(async_writer, 32) as disk_cache:
+                memory_cache = MemoryCache(disk_cache, 8)
+                log = Log(current_segment_id, memory_cache,
+                          block_size=block_size, blocks_per_segment=blocks_per_segment)
+
+                log.write_block(expected_block_bytes)
+                log.flush()
+
+        # Attempt read from a fresh cache
+        with AsyncWriter(bucket, 8, 4) as async_writer:
+            with DiskCache(async_writer, 32) as disk_cache:
+                memory_cache = MemoryCache(disk_cache, 8)
+                log = Log(current_segment_id + 1, memory_cache,
+                          block_size=block_size, blocks_per_segment=blocks_per_segment)
+
+                result = log.read_block(address)
+                self.assertEqual(result, expected_block_bytes)

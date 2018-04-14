@@ -48,7 +48,8 @@ class FuseApi(FUSELL):
 
         There's no reply to this method
         """
-        pass
+        self._log.flush()
+        # TODO: Save checkpoint
 
     def lookup(self, req, parent, name):
         """Look up a directory entry by name and get its attributes.
@@ -188,3 +189,11 @@ class FuseApi(FUSELL):
             reply_err
         """
         self.reply_err(req, errno.ENOSYS)
+
+    def fsync(self, req, ino, datasync, fi):
+        """Synchronize file contents
+
+        Valid replies:
+            reply_err
+        """
+        self._log.flush()

@@ -66,6 +66,12 @@ class TestS3Bucket(TestCase):
             Key='seg_123'
         )
 
+    def test_flush(self):
+        bucket_name = 'test_bucket'
+        bucket = S3Bucket(bucket_name)
+        bucket.flush()
+        # No assertions because it is a no-op.
+
     def test_put_checkpoint(self):
         bucket_name = 'test_bucket'
         bucket = S3Bucket(bucket_name)

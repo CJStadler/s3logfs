@@ -39,6 +39,12 @@ class S3Bucket:
     def get_segment(self, segment_number):
         return self._get_object(self._segment_key(segment_number))
 
+    def flush(self):
+        '''
+        This class writes to S3 synchronously, so there is nothing to flush. 
+        '''
+        pass
+
     def put_checkpoint(self, checkpoint_bytes):
         self._put_object(self.CHECKPOINT_KEY, checkpoint_bytes)
 

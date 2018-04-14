@@ -63,3 +63,34 @@ class TestLog(TestCase):
         self.assertEqual(log.get_current_segment_id(), current_segment_id + 1)
         backend.put_segment.assert_called_once_with(
             current_segment_id, blocks_per_segment * block_bytes)
+
+    def test_flush(self):
+        current_segment_id = 123
+        block_size = 128
+        blocks_per_segment = 8
+        backend = Mock()
+        log = Log(current_segment_id, backend, block_size=block_size, blocks_per_segment=blocks_per_segment)
+
+        block = block_size * b'a'
+        for i in range(blocks_per_segment):
+            block_address = log.write_block(block)
+
+        log.flush()
+
+        self.assertEqual(log.get_current_segment_id(), current_segment_id + 1)
+        backend.put_segment.assert_called_once_with(
+            current_segment_id,
+            blocks_per_segment * block
+        )
+        backend.flush.assert_called_once_with()
+
+    def test_flush_when_segment_empty(self):
+        current_segment_id = 123
+        backend = Mock()
+        log = Log(current_segment_id, backend)
+
+        log.flush()
+
+        self.assertEqual(log.get_current_segment_id(), current_segment_id)
+        backend.put_segment.assert_not_called()
+        backend.flush.assert_called_once_with()

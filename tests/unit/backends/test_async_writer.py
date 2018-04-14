@@ -73,3 +73,16 @@ class TestAsyncWriter(TestCase):
             cache.put_checkpoint(checkpoint_bytes)
 
             backend.put_checkpoint.assert_called_once_with(checkpoint_bytes)
+
+    def test_flush_should_wait_for_writes_to_complete(self):
+        segment_bytes = b'abc'
+        segment_number = 123
+        backend = Mock()
+        backend.put_segment.side_effect = lambda _a, _b: sleep(0.01)
+        cache_size = 3
+
+        with AsyncWriter(backend, cache_size, 2) as cache:
+            for i in range(cache_size):
+                cache.put_segment(i, segment_bytes)
+            cache.flush()
+            self.assertEqual(len(cache._segments_being_written), 0)

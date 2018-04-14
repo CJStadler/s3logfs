@@ -47,13 +47,6 @@ class Log:
 
         return segment.read_block(block_address.offset)
 
-        # NOTE: the above method of loading the segment, and then returning the block
-        # would be expensive, at least in the overall delay to the running program
-        # I would adjust this to start a thread which would load the segment
-        # from S3 into the cache, and then just grab the block from S3 and
-        # return it. The thread would populate the data into the segments dict
-        # for future reads in parallel
-
     def write_block(self, block_bytes):
         '''
         Writes the given bytes to the current segment. If this fills the segment
@@ -69,6 +62,12 @@ class Log:
             self._put_current_segment()
 
         return BlockAddress(segment_number, block_number)
+
+    def flush(self):
+        if len(self._current_segment) > 0:
+            self._put_current_segment()
+
+        self._backend.flush()
 
     def _put_current_segment(self):
         self._backend.put_segment(

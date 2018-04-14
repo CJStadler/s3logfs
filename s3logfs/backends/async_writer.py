@@ -42,6 +42,10 @@ class AsyncWriter(BackendWrapper):
         self._executor.submit(self._put_segment_async,
                               segment_number, segment_bytes)
 
+    def flush(self):
+        with self._segments_being_written_cv:
+            self._segments_being_written_cv.wait_for(self._queue_empty)
+
     def _put_segment_async(self, segment_number, segment_bytes):
         self._backend.put_segment(segment_number, segment_bytes)
         # TODO: Handle failure
@@ -52,3 +56,6 @@ class AsyncWriter(BackendWrapper):
 
     def _queue_not_full(self):
         return len(self._segments_being_written) < self._max_segments_in_cache
+
+    def _queue_empty(self):
+        return len(self._segments_being_written) == 0
