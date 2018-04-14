@@ -3,11 +3,12 @@ from . import BlockAddress
 from collections import defaultdict
 import pickle
 
+
 class CheckpointRegion:
 
-    def __init__(self, bucket="TEST", startINode=0):
-        self.block_size = 4096           # bytes
-        self.segment_size = 512          # blocks (default 2MB)
+    def __init__(self, bucket="TEST", startINode=0, block_size=4096, blocks_per_segment=512):
+        self.block_size = block_size           # bytes
+        self.segment_size = blocks_per_segment          # blocks (default 2MB)
         self.fs_size = 2**28             # blocks (default 1TB space)
         self.fs_used = 0                 # blocks
         self._segment_counter = 0        # unsigned long long

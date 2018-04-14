@@ -131,6 +131,7 @@ setup(
     entry_points={  # Optional
         'console_scripts': [
             'mount.s3logfs=s3logfs.mount:main',
+            'mkfs.s3logfs=s3logfs.mkfs:main'
         ],
     },
 )
