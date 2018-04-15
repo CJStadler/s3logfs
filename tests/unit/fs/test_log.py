@@ -1,67 +1,96 @@
 from unittest import TestCase
-import os
 from unittest.mock import Mock
 from s3logfs.fs import Log, ReadOnlySegment, ReadWriteSegment, BlockAddress
 
 
 class TestLog(TestCase):
-    def test_read_from_previous_segment(self):
-        # setup test requirements
-        segment_id = 123
-        savedAddress = BlockAddress(0,0)
-        bucket = Mock()
-        log = Log(segment_id, bucket)
-        # write several segments worth of random data, saving first address and block
-        for x in range(0, log.get_max_segment_count() * 3):
-          seg_bytes = bytearray(log.get_max_segment_count())
-          block = bytes(os.urandom(log.get_block_size()))
-          addr = log.write(block)
-          if (x==1):
-            savedAddress = addr
-            savedBlock = block
-        # using saved address read what should be the saved block
-        result = log.read(savedAddress)
-        # compare
-        self.assertEqual(result, savedBlock)
+    def test_read_block_from_a_previous_segment_should_return_the_block(self):
+        block_size = 64
+        address = BlockAddress(123, 2)
+        block_bytes = b'abc'
+        segment_bytes = block_size * address.offset * b'x' + block_bytes
+        backend = Mock()
+        backend.get_segment.return_value = segment_bytes
+        log = Log(999, backend, block_size=block_size)
 
-    def test_read_from_current_segment(self):
-        segment_id = 123
-        bucket = Mock()
-        log = Log(segment_id, bucket)
-        block = log.get_block_size() * b'a'
-        address = log.write(block)
-        result = log.read(address)
-        self.assertEqual(result, block)
+        result = log.read_block(address)
 
-    def test_write_when_segment_not_complete(self):
-        segment_id = 123
-        bucket = Mock()
-        log = Log(segment_id, bucket)
+        self.assertEqual(bytes(result), block_bytes)
+        backend.get_segment.assert_called_once_with(address.segmentid)
+
+    def test_read_block_from_current_segment_should_return_the_block(self):
+        block_size = 64
+        address = BlockAddress(123, 2)
+        block_bytes = block_size * b'a'
+        backend = Mock()
+        log = Log(address.segmentid, backend, block_size=block_size)
+
+        for _ in range(address.offset):
+            log.write_block(block_size * b'x')
+
+        log.write_block(block_bytes)
+        result = log.read_block(address)
+
+        self.assertEqual(bytes(result), block_bytes)
+        backend.get_segment.assert_not_called()
+
+    def test_write_block_should_write_to_the_current_segment(self):
+        current_segment_id = 123
+        backend = Mock()
+        log = Log(current_segment_id, backend)
         bytes = b'abc'
-        block_address = log.write(bytes)
-        self.assertEqual(block_address, BlockAddress(123,0))
-        self.assertEqual(log.get_current_segment_id(), segment_id)
 
-    def test_write_when_segment_complete(self):
-        segment_id = 123
-        bucket = Mock()
-        log = Log(segment_id, bucket)
+        block_address = log.write_block(bytes)
 
-        # write 1 segment worth of random data
-        for x in range(0, log.get_max_segment_count()):
-          block = bytes(os.urandom(log.get_block_size()))
-          block_address = log.write(block)
+        self.assertEqual(block_address.segmentid, current_segment_id)
+        self.assertEqual(log.get_current_segment_id(), current_segment_id)
+        backend.put_segment.assert_not_called()
 
-        # test that the current block address points to the last block of the previous segment
-        self.assertEqual(block_address,
-                         BlockAddress(log.get_current_segment_id() - 1, 
-                         log.get_max_segment_count() - 1))
+    def test_write_block_when_segment_is_full_should_put_the_segment(self):
+        current_segment_id = 123
+        block_size = 128
+        blocks_per_segment = 64
+        block_bytes = block_size * b'x'
+        backend = Mock()
+        log = Log(current_segment_id, backend, block_size=block_size,
+                  blocks_per_segment=blocks_per_segment)
+
+        for block_number in range(blocks_per_segment):
+            block_address = log.write_block(block_bytes)
+            self.assertEqual(block_address.offset, block_number)
 
         # test that the current segment id is the starting id + 1
-        self.assertEqual(log.get_current_segment_id(), segment_id + 1)
-        
-        # BCH - commenting out, it is aserting that it will be called once, it is not
-        # bucket.put_segment.assert_called_once_with(
-        #                   segment_id,
-        #                   seg_bytes
-        #                  )
+        self.assertEqual(log.get_current_segment_id(), current_segment_id + 1)
+        backend.put_segment.assert_called_once_with(
+            current_segment_id, blocks_per_segment * block_bytes)
+
+    def test_flush(self):
+        current_segment_id = 123
+        block_size = 128
+        blocks_per_segment = 8
+        backend = Mock()
+        log = Log(current_segment_id, backend, block_size=block_size, blocks_per_segment=blocks_per_segment)
+
+        block = block_size * b'a'
+        for i in range(blocks_per_segment):
+            block_address = log.write_block(block)
+
+        log.flush()
+
+        self.assertEqual(log.get_current_segment_id(), current_segment_id + 1)
+        backend.put_segment.assert_called_once_with(
+            current_segment_id,
+            blocks_per_segment * block
+        )
+        backend.flush.assert_called_once_with()
+
+    def test_flush_when_segment_empty(self):
+        current_segment_id = 123
+        backend = Mock()
+        log = Log(current_segment_id, backend)
+
+        log.flush()
+
+        self.assertEqual(log.get_current_segment_id(), current_segment_id)
+        backend.put_segment.assert_not_called()
+        backend.flush.assert_called_once_with()

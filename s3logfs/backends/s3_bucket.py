@@ -1,3 +1,4 @@
+from contextlib import closing
 from boto3 import client
 
 
@@ -9,11 +10,13 @@ class S3Bucket:
     '''
     CHECKPOINT_KEY = 'checkpoint'
     SEGMENT_PREFIX = 'seg_'
-    SUPER_BLOCK_KEY = 'super_block'
 
     def __init__(self, bucket_name):
         self._bucket_name = bucket_name
         self._client = client('s3')
+
+    def name(self):
+        return self._bucket_name
 
     def create(self, acl='private', region=None):
         '''
@@ -36,17 +39,17 @@ class S3Bucket:
     def get_segment(self, segment_number):
         return self._get_object(self._segment_key(segment_number))
 
-    def get_super_block(self):
-        return self._get_object(self.SUPER_BLOCK_KEY)
+    def flush(self):
+        '''
+        This class writes to S3 synchronously, so there is nothing to flush. 
+        '''
+        pass
 
     def put_checkpoint(self, checkpoint_bytes):
         self._put_object(self.CHECKPOINT_KEY, checkpoint_bytes)
 
     def put_segment(self, segment_number, segment_bytes):
         self._put_object(self._segment_key(segment_number), segment_bytes)
-
-    def put_super_block(self, super_block_bytes):
-        self._put_object(self.SUPER_BLOCK_KEY, super_block_bytes)
 
     # Private methods
 
@@ -58,13 +61,14 @@ class S3Bucket:
             Bucket=self._bucket_name,
             Key=key
         )
-        return response['Body'].read()
+        with closing(response['Body']) as body:
+            return body.read()
 
     def _put_object(self, key, body):
         '''
         TODO: Handle errors
         '''
-        response = self._client.put_object(
+        self._client.put_object(
             Bucket=self._bucket_name,
             Key=key,
             Body=body

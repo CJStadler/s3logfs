@@ -13,16 +13,31 @@ File System Requirements:
 
 ## Setup
 
+Install s3logfs:
 ```
 pip3 install -e path_to_repo
 ```
+
+To create or mount a filesystem your AWS credentials must be configured
+correctly for boto3 (See https://boto3.readthedocs.io/en/latest/guide/quickstart.html#configuration).
+
+To initialize an empty filesystem:
+```
+mkfs.s3logfs bucket_name
+```
+This will create a bucket with the given name (if it does not already exist) and
+store configuration information in it. Run `mkfs.s3logfs --help` to see
+additional options.
 
 To mount:
 ```
 mount.s3logfs directory_to_mount bucket_name
 ```
-Credentials for the bucket must be configured correctly for boto3
-(https://boto3.readthedocs.io/en/latest/guide/quickstart.html#configuration).
+
+To unmount:
+```
+fusermount -u mount_directory
+```
 
 ## Testing
 Tests are divided into two groups: unit and integration. The main difference is

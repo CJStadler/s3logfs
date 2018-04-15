@@ -10,7 +10,7 @@ import math
 from time import time
 
 from .fs import CheckpointRegion
-from .s3_bucket import S3Bucket
+from .backends import S3Bucket, DiskCache, MemoryCache
 from .fs import Log
 from .fs import INode
 from .fs import BlockAddress
@@ -18,9 +18,8 @@ from .fs import BlockAddress
 from .fusell import FUSELL
 from errno import ENOENT
 
-
 class FuseApi(FUSELL):
-    def __init__(self, mountpoint, bucket_name, encoding='utf-8'):
+    def __init__(self, mountpoint, bucket, encoding='utf-8'):
         '''
         This overrides the FUSELL __init__() so that we can set the bucket.
         '''
@@ -28,15 +27,7 @@ class FuseApi(FUSELL):
         # mount point
         self._mount = mountpoint
 
-        # for testing, if "TEST" is passed as the bucket name
-        # a new bucket will be created with the current 
-        # datetime as the bucket name, otherwise it will be 
-        # named with what is passed as an argument
-        if (bucket_name == "TEST"):
-          self._bucket_name = datetime.now()
-          print("DT: ", str(self._bucket_name))
-        else:
-          self._bucket_name = bucket_name        
+        self._bucket = bucket
 
         super().__init__(mountpoint, encoding=encoding)
 
@@ -44,14 +35,11 @@ class FuseApi(FUSELL):
         print("FS:INIT")
 
         # init superblock
-        
+
         # init CheckpointRegion - new FS, no recovery yet
-        self._CR = CheckpointRegion(self._bucket_name, 0)
+        self._CR = CheckpointRegion(self._bucket.name(), 0)
 
         # store superblock in CheckpointRegion
-
-        # init S3 bucket
-        self._bucket = S3Bucket(self._bucket_name);
 
         # init Log
         self._log = Log(
@@ -109,7 +97,8 @@ class FuseApi(FUSELL):
 
         There's no reply to this method
         """
-        pass
+        self._log.flush()
+        # TODO: Save checkpoint
 
     def lookup(self, req, parent, name):
         print("FS:lookup", parent, name)
@@ -596,7 +585,6 @@ class FuseApi(FUSELL):
         """
         self.reply_err(req, errno.ENOSYS)
 
-
     # ************
     # adding other possible functions which we may need to implement
     # based on the fusell.py code and libfuse library information
@@ -668,10 +656,14 @@ class FuseApi(FUSELL):
 ##        # error because its not implemented
 ##        self.reply_err(req,errno.ENOSYS)
 
-##    def fsync(self, req, ino, datasync, fi):
-##        print('fsync:', req, ino, datasync, fi)
-##        # return no error
-##        self.reply_err(req,0)
+    def fsync(self, req, ino, datasync, fi):
+        """Synchronize file contents
+
+        Valid replies:
+            reply_err
+        """
+
+        self._log.flush()
 
 ##    def fsyncdir(self, req, ino, datasync, fi):
 ##        print('fsyncdir:', req, ino, datasync, fi)
