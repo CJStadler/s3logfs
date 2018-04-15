@@ -686,14 +686,14 @@ class FuseApi(FUSELL):
 
     def _checkpoint_if_necessary(self):
         current_time = int(time())
-        last_checkpoint_time = this._CR.time()
+        last_checkpoint_time = self._CR.time()
 
-        if (current_time - last_checkpointed_segment_id) >= self.checkpoint_frequency:
+        if (current_time - last_checkpoint_time) >= self.checkpoint_frequency:
             self._save_checkpoint()
 
     def _save_checkpoint(self):
-        current_segment_id = this._log.get_current_segment_id()
-        this._CR.set_segment_id(current_segment_id)
-        this._CR.set_time(int(time()))
-        serialized_checkpoint = this._CR.to_bytes()
-        this._bucket.put_checkpoint(serialized_checkpoint)
+        current_segment_id = self._log.get_current_segment_id()
+        self._CR.set_segment_id(current_segment_id)
+        self._CR.set_time(int(time()))
+        serialized_checkpoint = self._CR.to_bytes()
+        self._bucket.put_checkpoint(serialized_checkpoint)
