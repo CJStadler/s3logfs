@@ -12,7 +12,7 @@ class TestINode(unittest.TestCase):
         self.assertEqual(INode.NUMBER_OF_DIRECT_BLOCKS, 16)
 
     def test_struct_format(self):
-        self.assertEqual(INode.STRUCT_FORMAT, 'QQQQIIIIIddd')
+        self.assertEqual(INode.STRUCT_FORMAT, 'QQQQIIIIIIIddd')
 
     def test_to_and_from_bytes(self):
         inode = INode()

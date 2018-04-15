@@ -8,6 +8,7 @@ from datetime import datetime
 from stat import *
 import math
 from time import time
+from fusell import FUSELL
 
 from .fs import CheckpointRegion
 from .backends import S3Bucket, DiskCache, MemoryCache
@@ -15,8 +16,6 @@ from .fs import Log
 from .fs import INode
 from .fs import BlockAddress
 
-from .fusell import FUSELL
-from errno import ENOENT
 
 class FuseApi(FUSELL):
 
@@ -29,6 +28,8 @@ class FuseApi(FUSELL):
         self._mount = mountpoint
 
         self._bucket = bucket
+
+        self.checkpoint_frequency = 30  # In seconds
 
         super().__init__(mountpoint, encoding=encoding)
 
@@ -44,23 +45,23 @@ class FuseApi(FUSELL):
 
         # init Log
         self._log = Log(
-                      self._CR.next_segment_id(), 
-                      self._bucket, 
-                      self._CR.block_size, 
+                      self._CR.next_segment_id(),
+                      self._bucket,
+                      self._CR.block_size,
                       self._CR.segment_size)
 
         # need to init empty file system
         # 1. create root inode
         root_inode = INode()
         root_inode.inode_number = self._CR.next_inode_id()
-        root_inode.parent = root_inode.inode_number        
+        root_inode.parent = root_inode.inode_number
         root_inode.mode = S_IFDIR | 0o777        # directory with 777 chmod
         root_inode.hard_links = 2     # "." and ".." make the first 2 hard links
 
         # 2. write root inode directory data to log
         # -- convert children to bytes
         data = root_inode.children_to_bytes()
-        # -- cut bytes up into block_size units and write each 
+        # -- cut bytes up into block_size units and write each
         # -- unit storing addr to inode
         number_blocks = math.ceil(len(data)/self._log.get_block_size())
         root_inode.size = number_blocks * self._log.get_block_size()
@@ -91,15 +92,15 @@ class FuseApi(FUSELL):
 
         # load inode from log
         return inode.from_bytes(inode_data)
- 
+
     def destroy(self, userdata):
         print('destroy:',userdata)
         """Clean up filesystem
 
         There's no reply to this method
         """
+        self._save_checkpoint()
         self._log.flush()
-        # TODO: Save checkpoint
 
     def lookup(self, req, parent, name):
         print("FS:lookup", parent, name)
@@ -122,7 +123,7 @@ class FuseApi(FUSELL):
             child_inode = self.load_inode(child_inode_id)
 
             # get child attributes
-            attr = child_inode.get_attr()         
+            attr = child_inode.get_attr()
         except:
             attr = dict()
 
@@ -135,22 +136,22 @@ class FuseApi(FUSELL):
                 entry_timeout=1.0)
             self.reply_entry(req, entry)
         else:
-            self.reply_err(req, ENOENT)
+            self.reply_err(req, errno.ENOENT)
 
     def forget(self, req, ino, nlookup):
         print('forget:', req, ino, nlookup)
-        
+
         # removes inode form inode_map
-        # this is done here because the inode must be 
+        # this is done here because the inode must be
         # maintained until all lookups have been cleared, FUSE
-        # calls 'forget' once this occurs. 
+        # calls 'forget' once this occurs.
         # Ex: create directory, cd into directory, delete directory in
         #     another terminal, in first terminal you can still list the
         #     directories contents (though it will show as empty, it wont error)
         #     in the 2nd terminal the directory will no longer show up. Once you
-        #     leave the directory on the 1st terminal, forget is called and 
+        #     leave the directory on the 1st terminal, forget is called and
         #     deletes the inode
-        del self._CR.inode_map[ino]   
+        del self._CR.inode_map[ino]
 
         self.reply_none(req)
 
@@ -159,7 +160,7 @@ class FuseApi(FUSELL):
 
         # LOAD INODE FROM STORAGE
         inode = self.load_inode(ino)
-        
+
         # obtain attr object from inode instance
         attr = inode.get_attr()
 
@@ -167,14 +168,14 @@ class FuseApi(FUSELL):
         if attr:
             self.reply_attr(req, attr, 1.0)
         else:
-            self.reply_err(req, ENOENT)
+            self.reply_err(req, errno.ENOENT)
 
     def setattr(self, req, ino, attr, to_set, fi):
         print('setattr:', ino, to_set)
 
         # LOAD INODE FROM STORAGE
         inode = self.load_inode(ino)
-        
+
         if inode.get_attr():
             # iterate through to_set key's to update inode
             for key in to_set:
@@ -210,6 +211,7 @@ class FuseApi(FUSELL):
 
             # update CR inode_map address
             self._CR.inode_map[inode.inode_number] = inode_addr
+            self._checkpoint_if_necessary()
 
             # get modified attr object
             inode_attr = inode.get_attr()
@@ -217,7 +219,7 @@ class FuseApi(FUSELL):
             # return reply_attr wtih modified inode_attr
             self.reply_attr(req, inode_attr, 1.0)
         else:
-            self.reply_err(req, ENOENT)
+            self.reply_err(req, errno.ENOENT)
 
     def mknod(self, req, parent, name, mode, rdev):
         print('mknod:', parent, name)
@@ -243,7 +245,7 @@ class FuseApi(FUSELL):
         # - set time attributes
         now = time()
         new_node.last_accessed_at = now
-        new_node.last_modified_at = now 
+        new_node.last_modified_at = now
         new_node.status_last_changed_at = now
 
         # set rdev
@@ -272,7 +274,7 @@ class FuseApi(FUSELL):
             address = self._log.write_block(block)
             new_node.write_address(address,x)
         # - write new_node inode to log
-        new_inode_addr = self._log.write_block(new_node.to_bytes()) 
+        new_inode_addr = self._log.write_block(new_node.to_bytes())
         # update CR inode_map for new_node
         self._CR.inode_map[new_node.inode_number] = new_inode_addr
 
@@ -289,14 +291,15 @@ class FuseApi(FUSELL):
             address = self._log.write_block(block)
             parent_inode.write_address(address, x)
         # - write parent inode to log
-        parent_inode_addr = self._log.write_block(parent_inode.to_bytes())   
+        parent_inode_addr = self._log.write_block(parent_inode.to_bytes())
         # - update CR inode_map for parent
         self._CR.inode_map[parent_inode.inode_number] = parent_inode_addr
+        self._checkpoint_if_necessary()
 
         # 5. Create/Return entry object
         # - get new_node attr object
         attr = new_node.get_attr()
-        
+
         if attr:
             # - create entry
             entry = dict(ino=new_node.inode_number,
@@ -359,7 +362,7 @@ class FuseApi(FUSELL):
             address = self._log.write_block(block)
             newdir.write_address(address,x)
         # - write newdir inode to log
-        newdir_inode_addr = self._log.write_block(newdir.to_bytes()) 
+        newdir_inode_addr = self._log.write_block(newdir.to_bytes())
         # update CR inode_map for newdir
         self._CR.inode_map[newdir.inode_number] = newdir_inode_addr
 
@@ -374,14 +377,15 @@ class FuseApi(FUSELL):
             address = self._log.write_block(block)
             parent_inode.write_address(address, x)
         # - write parent inode to log
-        parent_inode_addr = self._log.write_block(parent_inode.to_bytes())   
+        parent_inode_addr = self._log.write_block(parent_inode.to_bytes())
         # - update CR inode_map for parent
         self._CR.inode_map[parent_inode.inode_number] = parent_inode_addr
+        self._checkpoint_if_necessary()
 
         # 5. Create/Return entry object
         # - get newdir attr object
         attr = newdir.get_attr()
-        
+
         if attr:
             # - create entry
             entry = dict(ino=newdir.inode_number,
@@ -396,7 +400,7 @@ class FuseApi(FUSELL):
 
     def unlink(self, req, parent, name):
         print('unlink:', req, parent, name)
-        
+
         # 1. LOAD PARENT INODE
         # - load inode
         parent_inode = self.load_inode(parent)
@@ -420,12 +424,14 @@ class FuseApi(FUSELL):
             address = self._log.write_block(block)
             parent_inode.write_address(address, x)
         # - write parent inode to log
-        parent_inode_addr = self._log.write_block(parent_inode.to_bytes())   
+        parent_inode_addr = self._log.write_block(parent_inode.to_bytes())
         # - update CR inode_map for parent
         self._CR.inode_map[parent_inode.inode_number] = parent_inode_addr
 
         # NOTE: we do not remove the unlinked inode from the inode_map here
         #       it should be handled by the forget call
+
+        self._checkpoint_if_necessary()
 
         # return no error
         self.reply_err(req, 0)
@@ -458,9 +464,11 @@ class FuseApi(FUSELL):
             address = self._log.write_block(block)
             parent_inode.write_address(address, x)
         # - write parent inode to log
-        parent_inode_addr = self._log.write_block(parent_inode.to_bytes())   
+        parent_inode_addr = self._log.write_block(parent_inode.to_bytes())
         # - update CR inode_map for parent
         self._CR.inode_map[parent_inode.inode_number] = parent_inode_addr
+
+        self._checkpoint_if_necessary()
 
         # return no error
         self.reply_err(req, 0)
@@ -472,6 +480,7 @@ class FuseApi(FUSELL):
         Valid replies:
             reply_err
         """
+        self._checkpoint_if_necessary()
         self.reply_err(req, 0)
 
     def link(self, req, ino, newparent, newname):
@@ -482,11 +491,12 @@ class FuseApi(FUSELL):
             reply_entry
             reply_err
         """
+        self._checkpoint_if_necessary()
         self.reply_err(req, errno.EROFS)
 
     def open(self, req, ino, fi):
         print('open:', req, ino)
-        
+
         # verify inode exists, return open reply or error
         if self._CR.inode_exists(ino):
             self.reply_open(req, fi)
@@ -521,7 +531,7 @@ class FuseApi(FUSELL):
             end = (x+1)*self._log.get_block_size()
             block = buf[start:end]
             address = self._log.write_block(block)
-            inode.write_address(address, file_offset + x)           
+            inode.write_address(address, file_offset + x)
 
         # 3. Increase Size attribute if file grew
         max_write_size = len(buf) + (file_offset * self._log.get_block_size())
@@ -535,6 +545,8 @@ class FuseApi(FUSELL):
         # 4. Update CR Inode Map
         self._CR.inode_map[ino] = inode_addr
 
+        self._checkpoint_if_necessary()
+
         self.reply_write(req, len(buf))
 
         # self.reply_err(req, errno.EROFS)
@@ -545,12 +557,12 @@ class FuseApi(FUSELL):
         # 1. LOAD DIRECTORY INODE
         directory = self.load_inode(ino)
         data = bytearray()
-        number_blocks = int(directory.size / directory.block_size) 
+        number_blocks = int(directory.size / directory.block_size)
         for x in range(number_blocks):
             data.extend(self._log.read_block(directory.read_address(x)))
         directory.bytes_to_children(bytes(data))
 
-        # 2. BUILD DEFUALT LIST OF ENTRIES  
+        # 2. BUILD DEFUALT LIST OF ENTRIES
         entries = [
             ('.', {'st_ino': directory.inode_number, 'st_mode': S_IFDIR}),
             ('..', {'st_ino': directory.parent, 'st_mode': S_IFDIR})]
@@ -584,6 +596,7 @@ class FuseApi(FUSELL):
             reply_create
             reply_err
         """
+        self._checkpoint_if_necessary()
         self.reply_err(req, errno.ENOSYS)
 
     # ************
@@ -670,3 +683,17 @@ class FuseApi(FUSELL):
 ##        print('fsyncdir:', req, ino, datasync, fi)
 ##        # return no error
 ##        self.reply_err(req,0)
+
+    def _checkpoint_if_necessary(self):
+        current_time = int(time())
+        last_checkpoint_time = this._CR.time()
+
+        if (current_time - last_checkpointed_segment_id) >= self.checkpoint_frequency:
+            self._save_checkpoint()
+
+    def _save_checkpoint(self):
+        current_segment_id = this._log.get_current_segment_id()
+        this._CR.set_segment_id(current_segment_id)
+        this._CR.set_time(int(time()))
+        serialized_checkpoint = this._CR.to_bytes()
+        this._bucket.put_checkpoint(serialized_checkpoint)

@@ -42,6 +42,9 @@ class AsyncWriter(BackendWrapper):
         self._executor.submit(self._put_segment_async,
                               segment_number, segment_bytes)
 
+    def put_checkpoint(self, checkpoint_bytes):
+        self._executor.submit(self._put_checkpoint_async, checkpoint_bytes)
+
     def flush(self):
         with self._segments_being_written_cv:
             self._segments_being_written_cv.wait_for(self._queue_empty)
@@ -53,6 +56,9 @@ class AsyncWriter(BackendWrapper):
         with self._segments_being_written_cv:
             del self._segments_being_written[segment_number]
             self._segments_being_written_cv.notify()
+
+    def _put_checkpoint_async(self, checkpoint_bytes):
+        self._backend.put_checkpoint(checkpoint_bytes)
 
     def _queue_not_full(self):
         return len(self._segments_being_written) < self._max_segments_in_cache

@@ -65,14 +65,14 @@ class TestAsyncWriter(TestCase):
             self.assertEqual(result, checkpoint_bytes)
             backend.get_checkpoint.assert_called_once_with()
 
-    def test_put_checkpoint_should_be_forwarded_to_the_backend(self):
+    def test_put_checkpoint_should_be_performed_async(self):
         checkpoint_bytes = b'abc'
         backend = Mock()
 
         with AsyncWriter(backend, 4, 2) as cache:
             cache.put_checkpoint(checkpoint_bytes)
 
-            backend.put_checkpoint.assert_called_once_with(checkpoint_bytes)
+        backend.put_checkpoint.assert_called_once_with(checkpoint_bytes)
 
     def test_flush_should_wait_for_writes_to_complete(self):
         segment_bytes = b'abc'
