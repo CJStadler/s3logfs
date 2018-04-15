@@ -11,7 +11,7 @@ class CheckpointRegion:
         self.fs_size = 2**28                     # blocks (default 1TB space)
         self.fs_used = 0                         # blocks
         self._segment_counter = 0                # unsigned long long
-        self._inode_counter = startINode         # unsigned long long
+        self._inode_counter = start_inode         # unsigned long long
         self.s3_bucket_name = bucket             # s3 bucket name
         self.inode_map = defaultdict()           # inodeid <> BlockAddress
 
