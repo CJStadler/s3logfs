@@ -19,66 +19,23 @@ from .fs import BlockAddress
 
 class FuseApi(FUSELL):
 
-    def __init__(self, mountpoint, bucket, encoding='utf-8'):
+    def __init__(self, mountpoint, bucket, checkpoint_frequency, encoding='utf-8'):
         '''
         This overrides the FUSELL __init__() so that we can set the bucket.
         '''
-
-        # mount point
         self._mount = mountpoint
-
         self._bucket = bucket
+        self._checkpoint_frequency = checkpoint_frequency  # In seconds
 
-        self.checkpoint_frequency = 30  # In seconds
+        self._CR = CheckpointRegion.from_bytes(self._bucket.get_checkpoint())
+        self._log = Log(
+            self._CR.next_segment_id(),
+            self._bucket,
+            self._CR.block_size,
+            self._CR.segment_size
+        )
 
         super().__init__(mountpoint, encoding=encoding)
-
-    def init(self, userdata, conn):
-        print("FS:INIT")
-
-        # init superblock
-
-        # init CheckpointRegion - new FS, no recovery yet
-        self._CR = CheckpointRegion(self._bucket.name(), 0)
-
-        # store superblock in CheckpointRegion
-
-        # init Log
-        self._log = Log(
-                      self._CR.next_segment_id(),
-                      self._bucket,
-                      self._CR.block_size,
-                      self._CR.segment_size)
-
-        # need to init empty file system
-        # 1. create root inode
-        root_inode = INode()
-        root_inode.inode_number = self._CR.next_inode_id()
-        root_inode.parent = root_inode.inode_number
-        root_inode.mode = S_IFDIR | 0o777        # directory with 777 chmod
-        root_inode.hard_links = 2     # "." and ".." make the first 2 hard links
-
-        # 2. write root inode directory data to log
-        # -- convert children to bytes
-        data = root_inode.children_to_bytes()
-        # -- cut bytes up into block_size units and write each
-        # -- unit storing addr to inode
-        number_blocks = math.ceil(len(data)/self._log.get_block_size())
-        root_inode.size = number_blocks * self._log.get_block_size()
-        print("ROOT SIZE", root_inode.size)
-        root_inode.block_count = int(root_inode.size / 512)
-        root_inode.block_size = self._log.get_block_size()
-        for x in range(number_blocks):
-            block = data[x*self._log.get_block_size():(x+1)*self._log.get_block_size()]
-            address = self._log.write_block(block)
-            root_inode.write_address(address)
-
-        # 3. write root inode to log
-        root_inode_addr = self._log.write_block(root_inode.to_bytes())
-        # 4. update CR inode_map to for "/"
-        self._CR.inode_map[root_inode.inode_number] = root_inode_addr
-        # 5. update CR root_inode_id for "/"
-        self._CR.root_inode_id = root_inode.inode_number
 
     def load_inode(self, inode_id):
         # obtain inode address from imap
@@ -94,7 +51,7 @@ class FuseApi(FUSELL):
         return inode.from_bytes(inode_data)
 
     def destroy(self, userdata):
-        print('destroy:',userdata)
+        print('destroy:', userdata)
         """Clean up filesystem
 
         There's no reply to this method
@@ -113,7 +70,9 @@ class FuseApi(FUSELL):
         for x in range(int(parent_inode.size / parent_inode.block_size)):
             addr = parent_inode.read_address(x)
             data.extend(self._log.read_block(addr))
-        parent_inode.bytes_to_children(bytes(data))
+
+        if len(data) > 0:
+            parent_inode.bytes_to_children(bytes(data))
 
         # obtain child inodeid via name, if this fails, it should return an empty dict()
         try:
@@ -257,7 +216,9 @@ class FuseApi(FUSELL):
         data = bytearray()
         for x in range(int(parent_inode.size / parent_inode.block_size)):
             data.extend(self._log.read_block(parent_inode.read_address(x)))
-        parent_inode.bytes_to_children(bytes(data))
+
+        if len(data) > 0:
+            parent_inode.bytes_to_children(bytes(data))
         # - increment hard_links by 1
         parent_inode.hard_links += 1
         # - add new directory to children
@@ -272,7 +233,7 @@ class FuseApi(FUSELL):
             end = (x+1)*self._log.get_block_size()
             block = data[start:end]
             address = self._log.write_block(block)
-            new_node.write_address(address,x)
+            new_node.write_address(address, x)
         # - write new_node inode to log
         new_inode_addr = self._log.write_block(new_node.to_bytes())
         # update CR inode_map for new_node
@@ -303,9 +264,9 @@ class FuseApi(FUSELL):
         if attr:
             # - create entry
             entry = dict(ino=new_node.inode_number,
-                attr=attr,
-                attr_timeout=1.0,
-                entry_timeout=1.0)
+                         attr=attr,
+                         attr_timeout=1.0,
+                         entry_timeout=1.0)
             # reply with entry
             self.reply_entry(req, entry)
         else:
@@ -347,7 +308,9 @@ class FuseApi(FUSELL):
         data = bytearray()
         for x in range(int(parent_inode.size / parent_inode.block_size)):
             data.extend(self._log.read_block(parent_inode.read_address(x)))
-        parent_inode.bytes_to_children(bytes(data))
+
+        if len(data) > 0:
+            parent_inode.bytes_to_children(bytes(data))
         # - increment hard_links by 1
         parent_inode.hard_links += 1
         # - add new directory to children
@@ -358,9 +321,10 @@ class FuseApi(FUSELL):
         data = newdir.children_to_bytes()
         number_blocks = math.ceil(len(data)/self._log.get_block_size())
         for x in range(number_blocks):
-            block = data[x*self._log.get_block_size():(x+1)*self._log.get_block_size()]
+            block = data[x*self._log.get_block_size():(x+1) *
+                         self._log.get_block_size()]
             address = self._log.write_block(block)
-            newdir.write_address(address,x)
+            newdir.write_address(address, x)
         # - write newdir inode to log
         newdir_inode_addr = self._log.write_block(newdir.to_bytes())
         # update CR inode_map for newdir
@@ -373,7 +337,8 @@ class FuseApi(FUSELL):
         parent_inode.size = number_blocks * self._log.get_block_size()
         parent_inode.block_count = int(parent_inode.size / 512)
         for x in range(number_blocks):
-            block = data[x*self._log.get_block_size():(x+1)*self._log.get_block_size()]
+            block = data[x*self._log.get_block_size():(x+1) *
+                         self._log.get_block_size()]
             address = self._log.write_block(block)
             parent_inode.write_address(address, x)
         # - write parent inode to log
@@ -389,9 +354,9 @@ class FuseApi(FUSELL):
         if attr:
             # - create entry
             entry = dict(ino=newdir.inode_number,
-                attr=attr,
-                attr_timeout=1.0,
-                entry_timeout=1.0)
+                         attr=attr,
+                         attr_timeout=1.0,
+                         entry_timeout=1.0)
             # reply with entry
             self.reply_entry(req, entry)
         else:
@@ -407,7 +372,9 @@ class FuseApi(FUSELL):
         data = bytearray()
         for x in range(int(parent_inode.size / parent_inode.block_size)):
             data.extend(self._log.read_block(parent_inode.read_address(x)))
-        parent_inode.bytes_to_children(bytes(data))
+
+        if len(data) > 0:
+            parent_inode.bytes_to_children(bytes(data))
 
         # remove inode from parents children
         inode = parent_inode.children.pop(name)
@@ -446,7 +413,9 @@ class FuseApi(FUSELL):
         data = bytearray()
         for x in range(int(parent_inode.size / parent_inode.block_size)):
             data.extend(self._log.read_block(parent_inode.read_address(x)))
-        parent_inode.bytes_to_children(bytes(data))
+
+        if len(data) > 0:
+            parent_inode.bytes_to_children(bytes(data))
 
         # remove directory from parents children
         inode = parent_inode.children.pop(name)
@@ -460,7 +429,8 @@ class FuseApi(FUSELL):
         parent_inode.size = number_blocks * self._log.get_block_size()
         parent_inode.block_count = int(parent_inode.size / 512)
         for x in range(number_blocks):
-            block = data[x*self._log.get_block_size():(x+1)*self._log.get_block_size()]
+            block = data[x*self._log.get_block_size():(x+1) *
+                         self._log.get_block_size()]
             address = self._log.write_block(block)
             parent_inode.write_address(address, x)
         # - write parent inode to log
@@ -474,7 +444,7 @@ class FuseApi(FUSELL):
         self.reply_err(req, 0)
 
     def rename(self, req, parent, name, newparent, newname):
-        print('rename:',req,parent,name,newparent,newname)
+        print('rename:', req, parent, name, newparent, newname)
         """Rename a file
 
         Valid replies:
@@ -484,7 +454,7 @@ class FuseApi(FUSELL):
         self.reply_err(req, 0)
 
     def link(self, req, ino, newparent, newname):
-        print('link:',req,ino,newparent,newname)
+        print('link:', req, ino, newparent, newname)
         """Create a hard link
 
         Valid replies:
@@ -560,7 +530,9 @@ class FuseApi(FUSELL):
         number_blocks = int(directory.size / directory.block_size)
         for x in range(number_blocks):
             data.extend(self._log.read_block(directory.read_address(x)))
-        directory.bytes_to_children(bytes(data))
+
+        if len(data) > 0:
+            directory.bytes_to_children(bytes(data))
 
         # 2. BUILD DEFUALT LIST OF ENTRIES
         entries = [
@@ -568,14 +540,14 @@ class FuseApi(FUSELL):
             ('..', {'st_ino': directory.parent, 'st_mode': S_IFDIR})]
 
         # 3. ADD CHILDREN TO LIST
-        for k,v in directory.children.items():
+        for k, v in directory.children.items():
             # load child inode
             child_name = k
             child_inode = self.load_inode(int(v))
             # set attr object
             child_attr = child_inode.get_attr()
             # add inode/attr to entries
-            entries.append((child_name,child_attr))
+            entries.append((child_name, child_attr))
 
         self.reply_readdir(req, size, off, entries)
 
@@ -589,7 +561,7 @@ class FuseApi(FUSELL):
         self.reply_err(req, errno.ENOSYS)
 
     def create(self, req, parent, name, mode, fi):
-        print('create:',req,parent,name,mode)
+        print('create:', req, parent, name, mode)
         """Create and open a file
 
         Valid replies:
@@ -608,67 +580,67 @@ class FuseApi(FUSELL):
         print('readlink:', req, ino)
 
         # error because its not implemented
-        self.reply_err(req,errno.ENOENT)
+        self.reply_err(req, errno.ENOENT)
 
     def release(self, req, ino, fi):
         print('release:', req, ino, fi)
 
         # error because its not implemented
-        self.reply_err(req,errno.ENOSYS)
+        self.reply_err(req, errno.ENOSYS)
 
     def flush(self, req, ino, fi):
         print('flush:', req, ino, fi)
 
         # error because its not implemented
-        self.reply_err(req,errno.ENOSYS)
+        self.reply_err(req, errno.ENOSYS)
 
     def statfs(self, req, ino):
         print('statfs:', req, ino)
 
         # error because its not implemented
-        self.reply_err(req,errno.ENOSYS)
+        self.reply_err(req, errno.ENOSYS)
 
     def listxattr(self, req, ino, size):
         print('listxattr:', req, ino, size)
 
         # error because its not implemented
-        self.reply_err(req,errno.ENOSYS)
+        self.reply_err(req, errno.ENOSYS)
 
     def setxattr(self, req, ino, name, value, size, flags):
         print('setxattr:', req, ino, name, value, size, flags)
 
         # error because its not implemented
-        self.reply_err(req,errno.ENOSYS)
+        self.reply_err(req, errno.ENOSYS)
 
     def getxattr(self, req, ino, name, size):
         print('getxattr:', req, ino, name, size)
 
         # error because its not implemented
-        self.reply_err(req,errno.ENOSYS)
+        self.reply_err(req, errno.ENOSYS)
 
     def removexattr(self, req, ino, name):
         print('removexattr:', req, ino, name)
 
         # error because its not implemented
-        self.reply_err(req,errno.ENOSYS)
+        self.reply_err(req, errno.ENOSYS)
 
     def symlink(self, req, link, parent, name):
         print('symlink:', req, link, parent, name)
         # error ENOENT to stop process
-        self.reply_err(req,errno.EROFS)
+        self.reply_err(req, errno.EROFS)
 
 # following functions may not be required, but if we have time we can implement
 # them for more functionality
 
-##    def opendir(self, req, ino, fi):
+# def opendir(self, req, ino, fi):
 ##        print('opendir:', req, ino, fi)
-##        # error because its not implemented
-##        self.reply_err(req,errno.ENOSYS)
+# error because its not implemented
+# self.reply_err(req,errno.ENOSYS)
 
-##    def releasedir(self, req, ino, fi):
+# def releasedir(self, req, ino, fi):
 ##        print('releasedir:', req, ino, fi)
-##        # error because its not implemented
-##        self.reply_err(req,errno.ENOSYS)
+# error because its not implemented
+# self.reply_err(req,errno.ENOSYS)
 
     def fsync(self, req, ino, datasync, fi):
         """Synchronize file contents
@@ -679,16 +651,16 @@ class FuseApi(FUSELL):
 
         self._log.flush()
 
-##    def fsyncdir(self, req, ino, datasync, fi):
+# def fsyncdir(self, req, ino, datasync, fi):
 ##        print('fsyncdir:', req, ino, datasync, fi)
-##        # return no error
-##        self.reply_err(req,0)
+# return no error
+# self.reply_err(req,0)
 
     def _checkpoint_if_necessary(self):
         current_time = int(time())
         last_checkpoint_time = self._CR.time()
 
-        if (current_time - last_checkpoint_time) >= self.checkpoint_frequency:
+        if (current_time - last_checkpoint_time) >= self._checkpoint_frequency:
             self._save_checkpoint()
 
     def _save_checkpoint(self):

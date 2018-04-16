@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 import argparse
 
+from stat import S_IFDIR
 from sys import argv
-from datetime import datetime
-from .fs import CheckpointRegion
+from time import time
+
+from .fs import CheckpointRegion, Log, INode
 from .backends import S3Bucket
 
 
@@ -23,11 +25,37 @@ def main():
     s3_bucket.create(region=args.region)
 
     checkpoint = CheckpointRegion(
-        block_size=args.block_size, blocks_per_segment=args.blocks_per_segment)
-    serialized_checkpoint = checkpoint.to_bytes()
+        bucket=args.bucket_name,
+        start_inode=0,
+        block_size=args.block_size,
+        blocks_per_segment=args.blocks_per_segment,
+        checkpoint_time=time()
+    )
 
+    create_root_directory(checkpoint, s3_bucket)
+
+    serialized_checkpoint = checkpoint.to_bytes()
     s3_bucket.put_checkpoint(serialized_checkpoint)
 
+def create_root_directory(checkpoint, bucket):
+    log = Log(
+        checkpoint.next_segment_id(),
+        bucket,
+        checkpoint.block_size,
+        checkpoint.segment_size
+    )
+
+    root_inode = INode()
+    root_inode.inode_number = checkpoint.next_inode_id()
+    root_inode.parent = root_inode.inode_number
+    root_inode.block_size = checkpoint.block_size
+    root_inode.mode = S_IFDIR | 0o777        # directory with 777 chmod
+    root_inode.hard_links = 2     # "." and ".." make the first 2 hard links
+
+    root_inode_addr = log.write_block(root_inode.to_bytes())
+    log.flush()
+    checkpoint.inode_map[root_inode.inode_number] = root_inode_addr
+    checkpoint.root_inode_id = root_inode.inode_number
 
 if __name__ == '__main__':
     main()

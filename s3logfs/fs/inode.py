@@ -33,7 +33,7 @@ class INode:
         #   S_IFCHR    0o020000   character device
         #   S_IFIFO    0o010000   FIFO
         #   perm       0o000XXX   permissions = O|G|U w/ value  0 to 7
-        self.mode = 0         
+        self.mode = 0
         # owner and group id's
         self.uid = 0                      # st_uid
         self.gid = 0                      # st_gid
@@ -67,8 +67,8 @@ class INode:
             inode.parent,
             inode.size,
             inode.block_count,
-            inode.block_size,    
-            inode.mode,         
+            inode.block_size,
+            inode.mode,
             inode.uid,
             inode.gid,
             inode.hard_links,
@@ -94,8 +94,8 @@ class INode:
             self.parent,
             self.size,
             self.block_count,
-            self.block_size,    
-            self.mode,         
+            self.block_size,
+            self.mode,
             self.uid,
             self.gid,
             self.hard_links,
@@ -197,7 +197,7 @@ class INode:
                 # INDIRECT BLOCKS
                 return NotImplemented
 
-        # increase block_count if we just wrote an address to a higher 
+        # increase block_count if we just wrote an address to a higher
         if (self.block_count < self.block_offset):
             self.block_count = self.block_offset
 
@@ -223,7 +223,7 @@ class INode:
 
     # this will convert the children entries to bytes
     def children_to_bytes(self):
-        
+
         child_data = pickle.dumps(self.children)
         byte_count = len(child_data)
         data = bytearray()
@@ -235,4 +235,3 @@ class INode:
     def bytes_to_children(self, bytedata):
         byte_count = unpack("I",bytedata[0:4])[0]
         self.children = pickle.loads(bytedata[4:byte_count+4])
-

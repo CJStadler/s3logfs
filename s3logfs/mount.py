@@ -22,6 +22,8 @@ def main():
                         'at a time. When the queue is full all new requests will wait.')
     parser.add_argument('-t', '--threads', dest='thread_pool_size', type=int, default=4,
                         help='The number of threads in the write request pool.')
+    parser.add_argument('-c', '--checkpoint', dest='checkpoint_frequency', type=int, default=60,
+                        help='The number of seconds between checkpoints.')
     args = parser.parse_args()
 
     bucket_name = args.bucket
@@ -39,7 +41,7 @@ def main():
     with AsyncWriter(s3_bucket, args.write_queue_size, args.thread_pool_size) as async_writer:
         with DiskCache(async_writer, args.disk_cache_size) as disk_cache:
             memory_cache = MemoryCache(disk_cache, args.memory_cache_size)
-            FuseApi(args.mount, memory_cache)
+            FuseApi(args.mount, memory_cache, args.checkpoint_frequency)
 
 
 if __name__ == '__main__':

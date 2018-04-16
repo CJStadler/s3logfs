@@ -13,7 +13,7 @@ class BlockAddress:
             self.offset = 0
         elif (len(args) == 1):  # bytearray
             # first 6 bytes is segmentid (placed in unsigned long long)
-            self.segmentid = struct.unpack("<Q", args[0][0:6] + b'\x00\x00')[0]
+            self.segmentid = struct.unpack("<Q", bytes(args[0][0:6]) + b'\x00\x00')[0]
             # last 2 bytes is offset (placed in unsigned short)
             self.offset = struct.unpack("<H", args[0][6:8])[0]
         elif (len(args) == 2):  # segmentid & offset
