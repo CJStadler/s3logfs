@@ -661,6 +661,7 @@ class FuseApi(FUSELL):
         last_checkpoint_time = self._CR.time()
 
         if (current_time - last_checkpoint_time) >= self._checkpoint_frequency:
+            self._log.flush()
             self._save_checkpoint()
 
     def _save_checkpoint(self):
