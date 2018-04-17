@@ -712,8 +712,10 @@ class FuseApi(FUSELL):
             # 2. Write buffer (buf) to log in blocksize units updating
             #    block_addresess in inode to reflect data positioning in file.
             block_count = math.ceil(len(buf) / self._log.get_block_size())
+
             # -- get file_offset, off should be evenly divisible by block_size
             file_offset = off // self._log.get_block_size()
+
             # furthest write
             write_offset = 0
             for x in range(block_count):
@@ -728,6 +730,9 @@ class FuseApi(FUSELL):
             if (max_write_size > inode.size):
                 inode.size = max_write_size
                 inode.block_count = math.ceil(max_write_size / 512)
+
+            # update modified attr
+            inode.last_modified_at = time()
 
             # 3. Write Inode to log
             inode_addr = self._log.write_block(inode.to_bytes())
