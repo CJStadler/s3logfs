@@ -56,8 +56,8 @@ class FuseApi(FUSELL):
 
         There's no reply to this method
         """
-        self._save_checkpoint()
         self._log.flush()
+        self._save_checkpoint()
 
     def lookup(self, req, parent, name):
         print("FS:lookup", parent, name)
@@ -665,8 +665,8 @@ class FuseApi(FUSELL):
             self._save_checkpoint()
 
     def _save_checkpoint(self):
-        current_segment_id = self._log.get_current_segment_id()
-        self._CR.set_segment_id(current_segment_id)
+        last_segment_id = self._log.get_current_segment_id() - 1
+        self._CR.set_segment_id(last_segment_id)
         self._CR.set_time(int(time()))
         serialized_checkpoint = self._CR.to_bytes()
         self._bucket.put_checkpoint(serialized_checkpoint)
