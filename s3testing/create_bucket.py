@@ -3,7 +3,7 @@ import time
 
 s3 = boto3.client('s3')
 time1 = time.time()
-response = s3.create_bucket(Bucket='s3logfs-03-20-2018')
+response = s3.create_bucket(Bucket='s3logfs-04-16-2018')
 time2 = time.time()
 print(response)
 print('Create Time:', str((time2-time1)*1000.0)+'ms')
