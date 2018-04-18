@@ -37,6 +37,7 @@ def main():
     serialized_checkpoint = checkpoint.to_bytes()
     s3_bucket.put_checkpoint(serialized_checkpoint)
 
+
 def create_root_directory(checkpoint, bucket):
     log = Log(
         checkpoint.next_segment_id(),
@@ -52,10 +53,12 @@ def create_root_directory(checkpoint, bucket):
     root_inode.mode = S_IFDIR | 0o777        # directory with 777 chmod
     root_inode.hard_links = 2     # "." and ".." make the first 2 hard links
 
-    root_inode_addr = log.write_block(root_inode.to_bytes())
+    root_inode_addr = log.write_inode(
+        root_inode.to_bytes(), root_inode.inode_number)
     log.flush()
     checkpoint.inode_map[root_inode.inode_number] = root_inode_addr
     checkpoint.root_inode_id = root_inode.inode_number
+
 
 if __name__ == '__main__':
     main()

@@ -47,15 +47,30 @@ class Log:
 
         return segment.read_block(block_address.offset)
 
-    def write_block(self, block_bytes):
+    def write_data_block(self, block_bytes):
         '''
         Writes the given bytes to the current segment. If this fills the segment
         then the segment is sent to the backend.
 
         Precondition: len(block_bytes) <= block_size
         '''
+        block_number = self._current_segment.write_data(block_bytes)
+        segment_number = self._current_segment_id
 
-        block_number = self._current_segment.write(block_bytes)
+        if self._current_segment.is_full():
+            self._put_current_segment()
+
+        return BlockAddress(segment_number, block_number)
+
+    def write_inode(self, inode_bytes, inode_number):
+        '''
+        Writes the serialized inode to the current segment. If this fills the segment
+        then the segment is sent to the backend.
+
+        Precondition: len(inode_bytes) <= block_size
+        '''
+        block_number = self._current_segment.write_inode(
+            inode_bytes, inode_number)
         segment_number = self._current_segment_id
 
         if self._current_segment.is_full():
@@ -72,7 +87,7 @@ class Log:
     def _put_current_segment(self):
         self._backend.put_segment(
             self._current_segment_id,
-            self._current_segment.bytes() # TODO: is it necessary to convert to bytes
+            self._current_segment.to_bytes()
         )
 
         self._current_segment_id += 1

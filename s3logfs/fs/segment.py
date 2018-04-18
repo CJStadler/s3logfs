@@ -1,6 +1,6 @@
 from abc import ABC
 from collections import defaultdict
-
+from pickle import dumps, loads
 
 class Segment(ABC):
     '''
@@ -15,7 +15,7 @@ class Segment(ABC):
         self._in_s3 = False
 
     def __len__(self):
-        return len(self._bytes_representation)
+        return len(self._block_bytes)
 
     def get_id(self):
         return self._id
@@ -37,8 +37,14 @@ class Segment(ABC):
     def is_full(self):
         return isinstance(self, ReadOnlySegment) or self._next_block_number >= self._max_block_count
 
-    def bytes(self):
-        return bytes(self._bytes_representation)
+    def to_bytes(self):
+        summary_bytes = dumps(self._inode_block_numbers)
+
+        if len(summary_bytes) < self._block_size:
+            padding = (self._block_size - len(summary_bytes)) * b'\0'
+            summary_bytes += padding
+
+        return summary_bytes + self._block_bytes
 
     def read_block(self, block_number):
         '''
@@ -47,7 +53,10 @@ class Segment(ABC):
         Precondition: block_number < the number of blocks in self
         '''
         offset = block_number * self._block_size
-        return self._bytes_representation[offset:offset + self._block_size]
+        return self._block_bytes[offset:offset + self._block_size]
+
+    def inode_block_numbers(self):
+        return self._inode_block_numbers
 
 
 class ReadOnlySegment(Segment):
@@ -58,27 +67,37 @@ class ReadOnlySegment(Segment):
 
     def __init__(self, bytes, segment_id, block_size=4096, max_block_count=512):
         super().__init__(segment_id, block_size, max_block_count)
-        self._bytes_representation = memoryview(bytes)
+        memview = memoryview(bytes)
+        self._block_bytes = memview[block_size:]
+        summary_bytes = memview[:block_size]
+        self._inode_block_numbers = loads(summary_bytes)
 
 
 class ReadWriteSegment(Segment):
     '''
     This class represents a segment which is not yet complete, and so can
     be written to. The data is therefore represented as a bytearray, which is
-    mutable. When the segment is complete it should be converted into a
-    ReadOnlySegment.
+    mutable.
     '''
 
     def __init__(self, segment_id, block_size=4096, max_block_count=512):
         super().__init__(segment_id, block_size, max_block_count)
-        self._bytes_representation = bytearray()
+        self._block_bytes = bytearray()
         self._next_block_number = 0
+        self._inode_block_numbers = [] # (inode number, block number)
 
     def to_read_only(self):
-        # i think we should pad the segment to zero's if we force the segment to write early
-        return ReadOnlySegment(self._bytes_representation, self._id, self._block_size, self._max_block_count)
+        return ReadOnlySegment(self.to_bytes(), self._id, self._block_size, self._max_block_count)
 
-    def write(self, block_bytes):
+    def write_inode(self, block_bytes, inode_number):
+        block_number = self._write_block(block_bytes)
+        self._inode_block_numbers.append((inode_number, block_number))
+        return block_number
+
+    def write_data(self, block_bytes):
+        return self._write_block(block_bytes)
+
+    def _write_block(self, block_bytes):
         '''
         Adds the given block to the segment. The block will be padded with 0 if
         it is not equal to block_size.
@@ -89,11 +108,11 @@ class ReadWriteSegment(Segment):
         Precondition: Segment is not full
         '''
 
-        self._bytes_representation.extend(block_bytes)
+        self._block_bytes.extend(block_bytes)
 
         if len(block_bytes) < self._block_size:
-            padding = (self._block_size - len(block_bytes)) * b'0'
-            self._bytes_representation.extend(padding)
+            padding = (self._block_size - len(block_bytes)) * b'\0'
+            self._block_bytes.extend(padding)
 
         block_number = self._next_block_number
         self._next_block_number += 1

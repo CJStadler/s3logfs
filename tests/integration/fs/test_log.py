@@ -26,8 +26,7 @@ class TestLog(TestCase):
                         block_bytes = expected_block_bytes
                     else:
                         block_bytes = block_size * b'x'
-
-                    log.write_block(block_bytes)
+                    log.write_data_block(block_bytes)
 
                 result = log.read_block(address) # Should be read from cache
                 self.assertEqual(result, expected_block_bytes)
@@ -57,7 +56,7 @@ class TestLog(TestCase):
                 log = Log(current_segment_id, memory_cache,
                           block_size=block_size, blocks_per_segment=blocks_per_segment)
 
-                log.write_block(expected_block_bytes)
+                log.write_data_block(expected_block_bytes)
                 log.flush()
 
         # Attempt read from a fresh cache
