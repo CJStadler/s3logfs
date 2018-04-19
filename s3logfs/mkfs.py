@@ -6,7 +6,7 @@ from sys import argv
 from time import time
 
 from .fs import CheckpointRegion, Log, INode
-from .backends import S3Bucket
+from .backends import S3Bucket, LocalDirectory
 
 
 def main():
@@ -19,9 +19,15 @@ def main():
                         help='The number of blocks per segment.')
     parser.add_argument('-r', '--region', default=None,
                         help='The region to create the bucket in (see S3 documentation for options).')
+    parser.add_argument('-l', '--local', dest='local_directory', default=None,
+                        help='Create the filesystem under this local directory.')
     args = parser.parse_args()
 
-    s3_bucket = S3Bucket(args.bucket_name)
+    if args.local_directory:
+        s3_bucket = LocalDirectory(args.bucket_name, parent_directory=args.local_directory)
+    else:
+        s3_bucket = S3Bucket(args.bucket_name)
+
     s3_bucket.create(region=args.region)
 
     checkpoint = CheckpointRegion(

@@ -4,7 +4,7 @@ import argparse
 from sys import argv
 from datetime import datetime
 from .fuse_api import FuseApi
-from .backends import S3Bucket, AsyncWriter, DiskCache, MemoryCache
+from .backends import S3Bucket, AsyncWriter, DiskCache, MemoryCache, LocalDirectory
 
 
 def main():
@@ -24,6 +24,8 @@ def main():
                         help='The number of threads in the write request pool.')
     parser.add_argument('-c', '--checkpoint', dest='checkpoint_frequency', type=int, default=60,
                         help='The number of seconds between checkpoints.')
+    parser.add_argument('-l', '--local', dest='local_directory', default=None,
+                        help='Mount a local "bucket" under this directory.')
     args = parser.parse_args()
 
     bucket_name = args.bucket
@@ -36,7 +38,10 @@ def main():
         bucket_name = datetime.now()
         print("DT: ", str(bucket_name))
 
-    s3_bucket = S3Bucket(bucket_name)
+    if args.local_directory:
+        s3_bucket = LocalDirectory(bucket_name, parent_directory=args.local_directory)
+    else:
+        s3_bucket = S3Bucket(bucket_name)
 
     with AsyncWriter(s3_bucket, args.write_queue_size, args.thread_pool_size) as async_writer:
         with DiskCache(async_writer, args.disk_cache_size) as disk_cache:
