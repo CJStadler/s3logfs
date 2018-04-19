@@ -76,17 +76,3 @@ class LargeFile(object):
 x = LargeFile()
 # print (x.findAllPos(101, 100000))
 print (x.findAllPos(300+512*130, 10000))
-
-# y = x.findAllPos(512, 1)
-# print (x.findPosition(y))
-
-# y = x.findAllPos(10001, 1)
-# print (x.findPosition(y))
-
-# y = x.findAllPos(123478, 1)
-# print (x.findPosition(y))
-
-# y = x.findAllPos(10000001, 1)
-# print (x.findPosition(y))
-
-# y = x.findAllPos(10000000001, 1)
