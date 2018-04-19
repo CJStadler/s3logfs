@@ -77,7 +77,7 @@ class FuseApi(FUSELL):
 
                 self.reply_entry(req, entry)
 
-            except:
+            except KeyError:
                 # No such file or directory if no child found
                 self.reply_err(req, errno.ENOENT)
             #else:
@@ -876,7 +876,7 @@ class FuseApi(FUSELL):
         # obtain inode address from imap
         try:
             inode_address = self._CR.inode_map[inode_id]
-        except:
+        except KeyError:
             print("INode (", inode_id, ") not found in inode_map!")
 
         # define default inode
