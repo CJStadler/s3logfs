@@ -2,6 +2,7 @@ import struct
 
 
 class BlockAddress:
+    STRUCT_SIZE = 8
 
     # BlockAddress constructor accepts either ...
     #  - bytearray (1 argument)

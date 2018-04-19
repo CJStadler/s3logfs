@@ -81,10 +81,9 @@ class INode:
             inode.status_last_changed_at
         ) = unpacked_values
 
-        address_size = len(addresses_bytes) // klass.NUMBER_OF_DIRECT_BLOCKS
         for i in range(klass.NUMBER_OF_DIRECT_BLOCKS):
-            offset = i * address_size
-            address_bytes = addresses_bytes[offset:offset + address_size]
+            offset = i * BlockAddress.STRUCT_SIZE
+            address_bytes = addresses_bytes[offset:offset + BlockAddress.STRUCT_SIZE]
             inode.block_addresses[i] = BlockAddress(address_bytes)
 
         return inode
