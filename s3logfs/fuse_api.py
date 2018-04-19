@@ -750,7 +750,7 @@ class FuseApi(FUSELL):
         if load_children:
             data = bytearray()
             for x in range(int(inode.size / inode.block_size)):
-                data.extend(self._log.read_block(inode.read_address(x)))
+                data = self.read_data_block(inode, data, x)
 
             if len(bytes(data)) > 0:
                 inode.bytes_to_children(bytes(data))
@@ -774,11 +774,7 @@ class FuseApi(FUSELL):
 
             # iterate through data block by block and write to log
             for x in range(number_blocks):
-                start = x * self._log.get_block_size()
-                end = (x + 1) * self._log.get_block_size()
-                block = data[start:end]
-                address = self._log.write_data_block(block)
-                inode.write_address(address, x)
+                inode = self.write_data_block(inode, data, x)
 
         # - write inode to log
         self.write_inode(inode)
@@ -795,11 +791,7 @@ class FuseApi(FUSELL):
 
         # iterate through data block by block and write to log
         for x in range(number_blocks):
-            start = x * self._log.get_block_size()
-            end = (x + 1) * self._log.get_block_size()
-            block = data[start:end]
-            address = self._log.write_data_block(block)
-            inode.write_address(address, x)
+            inode = self.write_data_block(inode, data, x)
 
         # - write inode to log
         self.write_inode(inode)
@@ -808,8 +800,7 @@ class FuseApi(FUSELL):
         block_count = math.ceil(inode.size / self._log.get_block_size())
         data = bytearray()
         for x in range(block_count):
-            block_address = inode.read_address(x)
-            data.extend(self._log.read_block(block_address))
+            data = self.read_data_block(inode, data, x)
 
         link = data.decode('utf-8')[0:inode.size]
         
@@ -831,12 +822,7 @@ class FuseApi(FUSELL):
 
             # load data into byte array, then return requested bytes
             for x in range(block_count):
-
-                # get address for block
-                block_address = inode.read_address(file_offset + x)
-
-                # get data
-                data.extend(self._log.read_block(block_address))
+                data = self.read_data_block(inode, data, x, file_offset)
 
         # return bytes
         return bytes(data)
@@ -852,13 +838,7 @@ class FuseApi(FUSELL):
 
         # furthest write, will be used to set new size
         for x in range(block_count):
-            start = x * self._log.get_block_size()
-            end = (x + 1) * self._log.get_block_size()
-            block = buf[start:end]
-
-            address = self._log.write_data_block(block)
-
-            inode.write_address(address, file_offset + x)
+            inode = self.write_data_block(inode, buf, x, file_offset)
 
         # 3. Increase Size attribute if file grew
         max_write_size = len(buf) + (file_offset *
@@ -884,6 +864,19 @@ class FuseApi(FUSELL):
         # - update CR inode_map for inode
         self._CR.inode_map[inode.inode_number] = inode_addr
 
+    # method writes a single block to log, and updates inode address info
+    def write_data_block(self, inode, data, x, file_offset=0):
+        start = x * self._log.get_block_size()
+        end = (x + 1) * self._log.get_block_size()
+        block = data[start:end]
+        address = self._log.write_data_block(block)
+        inode.write_address(address, file_offset + x)
+        return inode
+
+    def read_data_block(self, inode, data, x, file_offset=0):
+        block_address = inode.read_address(file_offset + x)
+        data.extend(self._log.read_block(block_address))
+        return data
 
     def load_inode(self, inode_id):
         # obtain inode address from imap
