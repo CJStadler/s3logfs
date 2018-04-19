@@ -876,17 +876,17 @@ class FuseApi(FUSELL):
         # obtain inode address from imap
         try:
             inode_address = self._CR.inode_map[inode_id]
+
+            # read inode data from log
+            inode_data = self._log.read_block(inode_address)
+        
+            # load inode from log
+            return INode.from_bytes(inode_data)
+
         except KeyError:
+
             print("INode (", inode_id, ") not found in inode_map!")
-
-        # define default inode
-        inode = INode()
-
-        # read inode data from log
-        inode_data = self._log.read_block(inode_address)
-
-        # load inode from log
-        return inode.from_bytes(inode_data)
+            self.reply_err(req, errno.EIO)
 
     def _checkpoint_if_necessary(self):
         current_time = int(time())
