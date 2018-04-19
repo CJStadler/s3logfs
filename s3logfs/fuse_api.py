@@ -523,38 +523,7 @@ class FuseApi(FUSELL):
             # 1. LOAD INODE
             inode = self.load_inode(ino)
 
-            # 2. Write buffer (buf) to log in blocksize units updating
-            #    block_addresess in inode to reflect data positioning in file.
-            block_count = math.ceil(len(buf) / self._log.get_block_size())
-
-            # -- get file_offset, off should be evenly divisible by block_size
-            file_offset = off // self._log.get_block_size()
-
-            # furthest write
-            write_offset = 0
-            for x in range(block_count):
-                start = x*self._log.get_block_size()
-                end = (x+1)*self._log.get_block_size()
-                block = buf[start:end]
-                address = self._log.write_data_block(block)
-                inode.write_address(address, file_offset + x)
-
-            # 3. Increase Size attribute if file grew
-            max_write_size = len(buf) + (file_offset *
-                                         self._log.get_block_size())
-            if (max_write_size > inode.size):
-                inode.size = max_write_size
-                inode.block_count = math.ceil(max_write_size / 512)
-
-            # update modified attr
-            inode.last_modified_at = time()
-
-            # 3. Write Inode to log
-            inode_addr = self._log.write_inode(
-                inode.to_bytes(), inode.inode_number)
-
-            # 4. Update CR Inode Map
-            self._CR.inode_map[ino] = inode_addr
+            inode = write_file(self, inode, buf, off)
 
             self._checkpoint_if_necessary()
 
@@ -757,6 +726,43 @@ class FuseApi(FUSELL):
 
         # - write parent inode to log
         self.write_inode(inode)
+
+    def write_file(self, inode, buf, off):
+
+        # determine number of blocks to write
+        block_count = math.ceil(len(buf) / self._log.get_block_size())
+
+        # -- get file_offset, off should be evenly divisible by block_size
+        file_offset = off // self._log.get_block_size()
+
+        # furthest write, will be used to set new size
+        write_offset = 0
+        for x in range(block_count):
+            start = x * self._log.get_block_size()
+            end = (x + 1) * self._log.get_block_size()
+            block = buf[start:end]
+            address = self._log.write_data_block(block)
+            inode.write_address(address, file_offset + x)
+
+        # 3. Increase Size attribute if file grew
+        max_write_size = len(buf) + (file_offset *
+                                     self._log.get_block_size())
+        if (max_write_size > inode.size):
+            inode.size = max_write_size
+            inode.block_count = math.ceil(max_write_size / 512)
+
+        # update modified attr
+        inode.last_modified_at = time()
+
+        # 3. Write Inode to log
+        inode_addr = self._log.write_inode(
+            inode.to_bytes(), inode.inode_number)
+
+        # 4. Update CR Inode Map
+        self._CR.inode_map[inode.inode_number] = inode_addr
+
+        # return inode
+        return inode
 
     def write_inode(self, inode):
         # write inode to log
