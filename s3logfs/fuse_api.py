@@ -147,6 +147,7 @@ class FuseApi(FUSELL):
                         # keep current IFMT, replace IMODE
                         inode.mode = S_IFMT(
                             inode.mode) | S_IMODE(attr["st_mode"])
+                        inode.status_last_changed_at = time()
                     elif key == "st_size":
                         inode.size = attr["st_size"]
                     elif key == "st_blocks":
@@ -157,14 +158,18 @@ class FuseApi(FUSELL):
                         inode.hard_links = attr["st_nlink"]
                     elif key == "st_uid":
                         inode.uid = attr["st_uid"]
+                        inode.status_last_changed_at = time()
                     elif key == "st_gid":
                         inode.gid = attr["st_gid"]
+                        inode.status_last_changed_at = time()
                     elif key == "st_atime":
                         inode.last_accessed_at = attr["st_atime"]
+                        inode.status_last_changed_at = time()
                     elif key == "st_mtime":
                         inode.last_modified_at = attr["st_mtime"]
+                        inode.status_last_changed_at = time()
                     elif key == "st_ctime":
-                        inode.status_last_changed_at = attr["st_ctime"]
+                        inode.status_last_changed_at = time()
                     elif key == "st_dev":
                         inode.size = attr["st_dev"]
                     elif key == "st_rdev":
@@ -291,6 +296,12 @@ class FuseApi(FUSELL):
             # - set hard links to 2 (for "." and "..")
             newdir.hard_links = 2
 
+            # - set time attributes
+            now = time()
+            newdir.last_accessed_at = now
+            newdir.last_modified_at = now
+            newdir.status_last_changed_at = now
+
             # 3. update parent <> child relationship
             # - increment hard_links by 1
             current_directory.hard_links += 1
@@ -335,10 +346,16 @@ class FuseApi(FUSELL):
             directory = self.load_directory(parent)
 
             # remove inode from parents children
-            inode = directory.children.pop(name)
+            inode_id = directory.children.pop(name)
 
             # write directory
             self.write_directory(directory)
+
+            # update inode, decrement hard link and update last changed
+            inode = self.load_inode(inode_id)
+            inode.hard_links -= 1
+            inode.status_last_changed_at = time()
+            self.write_inode(inode)
 
             # NOTE: we do not remove the unlinked inode from the inode_map here
             #       it should be handled by the forget call
@@ -440,6 +457,7 @@ class FuseApi(FUSELL):
 
         # - increase target files hard links (since there are 2 hard links to file)
         target_file.hard_links += 1
+        target_file.status_last_changed_at = time()
 
         # 3. WRITE TARGET FILE INODE
         self.write_inode(target_file)
@@ -469,6 +487,17 @@ class FuseApi(FUSELL):
 
         # verify inode exists, return open reply or error
         if self._CR.inode_exists(ino):
+
+            # load inode
+            inode = self.load_inode(ino)
+
+            # update access time
+            now = time()
+            inode.last_accessed_at = now
+
+            # write inode
+            self.write_inode(inode)
+
             self.reply_open(req, fi)
         else:
             self.reply_err(req, errno.EIO)
@@ -548,16 +577,74 @@ class FuseApi(FUSELL):
 
         self.reply_readdir(req, size, off, entries)
 
-    # ************
-    # adding other possible functions which we may need to implement
-    # based on the fusell.py code and libfuse library information
-    # ************
+    def symlink(self, req, link, parent, name):
+        print('symlink:', req, link, parent, name)
+
+        # create symlink inode
+        link_node = INode()
+        link_node.inode_number = self._CR.next_inode_id()
+
+        # - obtain uid/gid info via req
+        ctx = self.req_ctx(req)
+        link_node.uid = ctx['uid']
+        link_node.gid = ctx['gid']
+
+        # - set mode to S_IFLNK w/ 777 permissions
+        link_node.mode = S_IFLNK | 0o777
+      
+        # - set hard links to 1, for itself
+        link_node.hard_links = 1
+
+        # - set time attributes
+        now = time()
+        link_node.last_accessed_at = now
+        link_node.last_modified_at = now
+        link_node.status_last_changed_at = now
+
+        # write symlink to log
+        self.write_symlink(link_node, link)
+
+        # load directory
+        directory = self.load_directory(parent)
+        
+        # update parent
+        directory.children[name] = link_node.inode_number
+
+        # write directory to log
+        self.write_directory(directory)
+
+        # - get newdir attr object
+        attr = link_node.get_attr()
+
+        if attr:
+            # - create entry
+            entry = dict(ino=link_node.inode_number,
+                         attr=attr,
+                         attr_timeout=1.0,
+                         entry_timeout=1.0)
+            # reply with entry
+            self.reply_entry(req, entry)
+        else:
+            # I/O error, was not able to obtain attr for new directory
+            self.reply_err(req, errno.EIO)
+
 
     def readlink(self, req, ino):
         print('readlink:', req, ino)
 
-        # error because its not implemented
-        self.reply_err(req, errno.ENOENT)
+        # load inode
+        inode = self.load_inode(ino)
+
+        # read link from inode data
+        link = self.read_symlink(inode)
+
+        # reply with link
+        self.reply_readlink(req, link)
+
+    # ************
+    # adding other possible functions which we may need to implement
+    # based on the fusell.py code and libfuse library information
+    # ************
 
     def release(self, req, ino, fi):
         print('FS-RELEASE:', req, ino, fi)
@@ -621,10 +708,6 @@ class FuseApi(FUSELL):
         # error because its not implemented
         self.reply_err(req, errno.ENOSYS)
 
-    def symlink(self, req, link, parent, name):
-        print('symlink:', req, link, parent, name)
-        # error ENOENT to stop process
-        self.reply_err(req, errno.ENOSYS)
 
 # following functions may not be required, but if we have time we can implement
 # them for more functionality
@@ -697,8 +780,40 @@ class FuseApi(FUSELL):
                 address = self._log.write_data_block(block)
                 inode.write_address(address, x)
 
-        # - write parent inode to log
+        # - write inode to log
         self.write_inode(inode)
+
+    # this method will write a directory inode to the log
+    def write_symlink(self, inode, link):
+        
+        # get inode data & set size/block_count attributes
+        data = link.encode('utf-8')
+        number_blocks = math.ceil(len(data)/self._log.get_block_size())
+        # directory size is always an increment of system block_size (page_size)
+        inode.size = len(data)
+        inode.block_count = int(inode.size / 512)
+
+        # iterate through data block by block and write to log
+        for x in range(number_blocks):
+            start = x * self._log.get_block_size()
+            end = (x + 1) * self._log.get_block_size()
+            block = data[start:end]
+            address = self._log.write_data_block(block)
+            inode.write_address(address, x)
+
+        # - write inode to log
+        self.write_inode(inode)
+
+    def read_symlink(self, inode):
+        block_count = math.ceil(inode.size / self._log.get_block_size())
+        data = bytearray()
+        for x in range(block_count):
+            block_address = inode.read_address(x)
+            data.extend(self._log.read_block(block_address))
+
+        link = data.decode('utf-8')[0:inode.size]
+        
+        return link
 
 
     # read_file - will return data from a file, based on the size an offset
@@ -753,7 +868,9 @@ class FuseApi(FUSELL):
             inode.block_count = math.ceil(max_write_size / 512)
 
         # update modified attr
-        inode.last_modified_at = time()
+        now = time()
+        inode.last_modified_at = now
+        inode.status_last_changed_at = now
 
         # 3. Write Inode to log
         self.write_inode(inode)
