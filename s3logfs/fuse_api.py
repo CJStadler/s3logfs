@@ -205,8 +205,6 @@ class FuseApi(FUSELL):
             new_node.uid = ctx['uid']
             new_node.gid = ctx['gid']
 
-            new_node.parent = parent
-
             # - set mode
             new_node.mode = mode
 
