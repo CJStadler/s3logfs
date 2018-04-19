@@ -6,12 +6,16 @@ from errno import ENOENT
 from stat import *
 from time import time
 from collections import *
+import math
 
 import pickle
 
+ST_BLOCKS_SIZE = 512  # only used to calculate st_blocks, not related to
+                      # inode block_size
+
 class INode:
     NUMBER_OF_DIRECT_BLOCKS = 16
-    STRUCT_FORMAT = 'QQQQIIIIIIIddd' # Plus block addresses
+    STRUCT_FORMAT = 'QQQIIIIIIIddd' # Plus block addresses
     STRUCT = Struct(STRUCT_FORMAT)
 
     def __init__(self):
@@ -21,7 +25,6 @@ class INode:
         self.parent = 0
         # size of data (all 3 used by FUSE)
         self.size = 0                     # st_size - total bytes (file data)
-        self.block_count = 0              # st_blocks - number of 512byte blocks
         self.block_size = 0               # st_blksize
         # st_mode (file type + permissions combined via masking)
         #   S_IFMT     0o170000   bit mask for the file type bit field
@@ -60,13 +63,12 @@ class INode:
         addresses_bytes = data[klass.STRUCT.size:]
         unpacked_values = klass.STRUCT.unpack(struct_bytes)
 
-        # pattern: QQQQIIIIIIIddd
+        # pattern: QQQIIIIIIIddd
         inode = klass()
         (
             inode.inode_number,
             inode.parent,
             inode.size,
-            inode.block_count,
             inode.block_size,
             inode.mode,
             inode.uid,
@@ -88,12 +90,11 @@ class INode:
         return inode
 
     def to_bytes(self):
-        # pattern: QQQQIIIIIddd
+        # pattern: QQQIIIIIddd
         struct_bytes = self.STRUCT.pack(
             self.inode_number,
             self.parent,
             self.size,
-            self.block_count,
             self.block_size,
             self.mode,
             self.uid,
@@ -134,13 +135,16 @@ class INode:
     def set_type(self, inode_type):
         self.mode = (self.mode ^ S_IFMT(self.mode)) | inode_ntype
 
+    def get_stblocks(self):
+        return math.ceil(self.size / ST_BLOCKS_SIZE)
+
     # returns an attr dict object for inode, used by FUSE
     def get_attr(self):
         attr = dict(
                  st_ino=self.inode_number,
                  st_mode=self.mode,
                  st_size=self.size,
-                 st_blocks=self.block_count,
+                 st_blocks=self.get_stblocks(),
                  st_blksize=self.block_size,
                  st_nlink=self.hard_links,
                  st_uid=self.uid,
@@ -198,8 +202,8 @@ class INode:
                 return NotImplemented
 
         # increase block_count if we just wrote an address to a higher
-        if (self.block_count < self.block_offset):
-            self.block_count = self.block_offset
+# BCH        if (self.block_count < self.block_offset):
+#            self.block_count = self.block_offset
 
     # this method allows us to read the address at the next block_offset
     # NOTE: needs to be extended with indirect pointers

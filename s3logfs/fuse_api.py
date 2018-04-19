@@ -39,21 +39,7 @@ class FuseApi(FUSELL):
 
         super().__init__(mountpoint, encoding=encoding)
 
-    def load_inode(self, inode_id):
-        # obtain inode address from imap
-        try:
-            inode_address = self._CR.inode_map[inode_id]
-        except:
-            print("INode (", inode_id, ") not found in inode_map!")
-
-        # define default inode
-        inode = INode()
-
-        # read inode data from log
-        inode_data = self._log.read_block(inode_address)
-
-        # load inode from log
-        return inode.from_bytes(inode_data)
+    ### FUSE METHODS ###
 
     def destroy(self, userdata):
         print('FS-DESTROY:', userdata)
@@ -70,41 +56,33 @@ class FuseApi(FUSELL):
         # verify parent inode exists in inode_map lookup
         if self._CR.inode_exists(parent):
 
-            # load parent inode
-            parent_inode = self.load_inode(parent)
+            # load parent inode w/ children
+            parent_inode = self.load_directory(parent)
 
-            # load directory children
-            data = bytearray()
-            for x in range(int(parent_inode.size / parent_inode.block_size)):
-                addr = parent_inode.read_address(x)
-                data.extend(self._log.read_block(addr))
+            # load child inode with name, and return entry object with attributes
+            try:
+                child_inode_id = int(parent_inode.children[name])
 
-            if len(data) > 0:
-                parent_inode.bytes_to_children(bytes(data))
+                # load child inode
+                child_inode = self.load_inode(child_inode_id)
 
-                try:
-                    child_inode_id = int(parent_inode.children[name])
+                # get child attributes
+                attr = child_inode.get_attr()
 
-                    # load child inode
-                    child_inode = self.load_inode(child_inode_id)
+                entry = dict(
+                    ino=child_inode_id,
+                    attr=attr,
+                    attr_timeout=1.0,
+                    entry_timeout=1.0)
 
-                    # get child attributes
-                    attr = child_inode.get_attr()
+                self.reply_entry(req, entry)
 
-                    entry = dict(
-                        ino=child_inode_id,
-                        attr=attr,
-                        attr_timeout=1.0,
-                        entry_timeout=1.0)
-
-                    self.reply_entry(req, entry)
-
-                except:
-                    # No such file or directory if no child found
-                    self.reply_err(req, errno.ENOENT)
-            else:
-                # No such file or directory if there is no children data
+            except KeyError:
+                # No such file or directory if no child found
                 self.reply_err(req, errno.ENOENT)
+            #else:
+            #    # No such file or directory if there is no children data
+            #    self.reply_err(req, errno.ENOENT)
         else:
             # No such file or directory if parent does not exist
             self.reply_err(req, errno.ENOENT)
@@ -124,6 +102,9 @@ class FuseApi(FUSELL):
         #     deletes the inode
         del self._CR.inode_map[ino]
 
+        # CHECKPOINT
+        self._checkpoint_if_necessary()
+
         self.reply_none(req)
 
     def getattr(self, req, ino, fi):
@@ -132,7 +113,7 @@ class FuseApi(FUSELL):
         # verify inode exists
         if self._CR.inode_exists(ino):
 
-            # LOAD INODE FROM STORAGE
+            # LOAD INODE FROM STORAGE (does not need to be type specific)
             inode = self.load_inode(ino)
 
             # obtain attr object from inode instance
@@ -146,6 +127,7 @@ class FuseApi(FUSELL):
         else:
             # No file or directory, inode was not found
             self.reply_err(req, errno.ENOENT)
+
 
     def setattr(self, req, ino, attr, to_set, fi):
         print('FS-SETATTR:', req, ino, attr, to_set, fi)
@@ -165,35 +147,36 @@ class FuseApi(FUSELL):
                         # keep current IFMT, replace IMODE
                         inode.mode = S_IFMT(
                             inode.mode) | S_IMODE(attr["st_mode"])
+                        inode.status_last_changed_at = time()
                     elif key == "st_size":
                         inode.size = attr["st_size"]
-                    elif key == "st_blocks":
-                        inode.block_count = attr["st_blocks"]
                     elif key == "st_blksize":
                         inode.block_size = attr["st_blksize"]
                     elif key == "st_nlink":
                         inode.hard_links = attr["st_nlink"]
                     elif key == "st_uid":
                         inode.uid = attr["st_uid"]
+                        inode.status_last_changed_at = time()
                     elif key == "st_gid":
                         inode.gid = attr["st_gid"]
+                        inode.status_last_changed_at = time()
                     elif key == "st_atime":
                         inode.last_accessed_at = attr["st_atime"]
+                        inode.status_last_changed_at = time()
                     elif key == "st_mtime":
                         inode.last_modified_at = attr["st_mtime"]
+                        inode.status_last_changed_at = time()
                     elif key == "st_ctime":
-                        inode.status_last_changed_at = attr["st_ctime"]
+                        inode.status_last_changed_at = time()
                     elif key == "st_dev":
                         inode.size = attr["st_dev"]
                     elif key == "st_rdev":
                         inode.size = attr["st_rdev"]
 
                 # write modified INODE to storage
-                inode_addr = self._log.write_inode(
-                    inode.to_bytes(), inode.inode_number)
+                self.write_inode(inode)
 
-                # update CR inode_map address
-                self._CR.inode_map[inode.inode_number] = inode_addr
+                # CHECKPOINT
                 self._checkpoint_if_necessary()
 
                 # get modified attr object
@@ -206,21 +189,15 @@ class FuseApi(FUSELL):
         else:
             self.reply_err(req, errno.ENOENT)
 
+
     def mknod(self, req, parent, name, mode, rdev):
         print('FS-MKNOD:', req, parent, name,  mode, rdev)
 
         # verify inode exists
         if self._CR.inode_exists(parent):
 
-            # 1. LOAD PARENT INODE
-            # - load inode
-            parent_inode = self.load_inode(parent)
-            data = bytearray()
-            for x in range(int(parent_inode.size / parent_inode.block_size)):
-                data.extend(self._log.read_block(parent_inode.read_address(x)))
-
-            if len(data) > 0:
-                parent_inode.bytes_to_children(bytes(data))
+            # 1. load directory
+            directory = self.load_directory(parent)
 
             # 2. CREATE NEW FILE INODE
             new_node = INode()
@@ -234,10 +211,7 @@ class FuseApi(FUSELL):
             # - set mode
             new_node.mode = mode
 
-            # - set parent
-            new_node.parent = parent
-
-            # - set hard links to 2 (for "." and "..")
+            # - set hard links to 1, for itself
             new_node.hard_links = 1
 
             # - set time attributes
@@ -249,49 +223,24 @@ class FuseApi(FUSELL):
             # set rdev
             new_node.rdev = rdev
 
+            # 4. WRITE NEW NODE
+            self.write_inode(new_node)
+
             # 3. update parent <> new child relationship
             # - increment hard_links by 1
-            parent_inode.hard_links += 1
+            directory.hard_links += 1
 
-            # - add new directory to children
-            parent_inode.children[name] = new_node.inode_number
-
-            # 4. WRITE NEW DIRECTORY AND UPDATE INODE_MAP
-            # - write new_node data to log
-            data = new_node.children_to_bytes()
-            number_blocks = math.ceil(len(data)/self._log.get_block_size())
-            for x in range(number_blocks):
-                start = x*self._log.get_block_size()
-                end = (x+1)*self._log.get_block_size()
-                block = data[start:end]
-                address = self._log.write_data_block(block)
-                new_node.write_address(address, x)
-            # - write new_node inode to log
-            new_inode_addr = self._log.write_inode(
-                new_node.to_bytes(), new_node.inode_number)
-            # update CR inode_map for new_node
-            self._CR.inode_map[new_node.inode_number] = new_inode_addr
+            # - add new node to directory
+            directory.children[name] = new_node.inode_number
 
             # 5. WRITE PARENT AND UPDATE INODE_MAP
             # - write parent data to log
-            data = parent_inode.children_to_bytes()
-            number_blocks = math.ceil(len(data)/self._log.get_block_size())
-            parent_inode.size = number_blocks * self._log.get_block_size()
-            parent_inode.block_count = int(parent_inode.size / 512)
-            for x in range(number_blocks):
-                start = x*self._log.get_block_size()
-                end = (x+1)*self._log.get_block_size()
-                block = data[start:end]
-                address = self._log.write_data_block(block)
-                parent_inode.write_address(address, x)
-            # - write parent inode to log
-            parent_inode_addr = self._log.write_inode(
-                parent_inode.to_bytes(), parent_inode.inode_number)
-            # - update CR inode_map for parent
-            self._CR.inode_map[parent_inode.inode_number] = parent_inode_addr
+            self.write_directory(directory)
+ 
+            # 6. checkpoint if needed
             self._checkpoint_if_necessary()
 
-            # 6. Create/Return entry object
+            # 7. Create/Return entry object
             # - get new_node attr object
             attr = new_node.get_attr()
 
@@ -310,24 +259,17 @@ class FuseApi(FUSELL):
             # I/O error, parent does not exist to create node
             self.reply_err(req, errno.EIO)
 
+
     def mkdir(self, req, parent, name, mode):
         print('FS-MKDIR:', parent, name, mode)
 
         # verify inode exists
         if self._CR.inode_exists(parent):
 
-            # 1. LOAD PARENT INODE
-            # - load inode
-            parent_inode = self.load_inode(parent)
-            data = bytearray()
-            for x in range(int(parent_inode.size / parent_inode.block_size)):
-                data.extend(self._log.read_block(parent_inode.read_address(x)))
-
-            if len(data) > 0:
-                parent_inode.bytes_to_children(bytes(data))
+            # 1. LOAD CURRENT DIRECTORY w/ children
+            current_directory = self.load_directory(parent)
 
             # 2. CREATE NEW DIRECTORY INODE
-            # - create new directory inode
             newdir = INode()
 
             # - obtain new inodeid from CheckpointRegion
@@ -338,7 +280,6 @@ class FuseApi(FUSELL):
 
             # - set size / block info
             newdir.size = self._log.get_block_size()
-            newdir.block_count = int(self._log.get_block_size() / 512)
             newdir.block_size = self._log.get_block_size()
 
             # - obtain uid/gid info via req
@@ -346,52 +287,34 @@ class FuseApi(FUSELL):
             newdir.uid = ctx['uid']
             newdir.gid = ctx['gid']
 
-            # - set parent
+            # - set parent (only used for directories, files can have multiple parents via hard links)
             newdir.parent = parent
 
             # - set hard links to 2 (for "." and "..")
             newdir.hard_links = 2
 
+            # - set time attributes
+            now = time()
+            newdir.last_accessed_at = now
+            newdir.last_modified_at = now
+            newdir.status_last_changed_at = now
+
             # 3. update parent <> child relationship
             # - increment hard_links by 1
-            parent_inode.hard_links += 1
+            current_directory.hard_links += 1
             # - add new directory to children
-            parent_inode.children[name] = newdir.inode_number
+            current_directory.children[name] = newdir.inode_number
 
             # 4. WRITE NEW DIRECTORY AND UPDATE INODE_MAP
-            # - write newdir data to log
-            data = newdir.children_to_bytes()
-            number_blocks = math.ceil(len(data)/self._log.get_block_size())
-            for x in range(number_blocks):
-                block = data[x*self._log.get_block_size():(x+1) *
-                             self._log.get_block_size()]
-                address = self._log.write_data_block(block)
-                newdir.write_address(address, x)
-            # - write newdir inode to log
-            newdir_inode_addr = self._log.write_inode(
-                newdir.to_bytes(), newdir.inode_number)
-            # update CR inode_map for newdir
-            self._CR.inode_map[newdir.inode_number] = newdir_inode_addr
+            self.write_directory(newdir)
 
             # 5. WRITE PARENT AND UPDATE INODE_MAP
-            # - write parent data to log
-            data = parent_inode.children_to_bytes()
-            number_blocks = math.ceil(len(data)/self._log.get_block_size())
-            parent_inode.size = number_blocks * self._log.get_block_size()
-            parent_inode.block_count = int(parent_inode.size / 512)
-            for x in range(number_blocks):
-                block = data[x*self._log.get_block_size():(x+1) *
-                             self._log.get_block_size()]
-                address = self._log.write_data_block(block)
-                parent_inode.write_address(address, x)
-            # - write parent inode to log
-            parent_inode_addr = self._log.write_inode(
-                parent_inode.to_bytes(), parent_inode.inode_number)
-            # - update CR inode_map for parent
-            self._CR.inode_map[parent_inode.inode_number] = parent_inode_addr
+            self.write_directory(current_directory)
+
+            # 6. CHECKPOINT
             self._checkpoint_if_necessary()
 
-            # 6. Create/Return entry object
+            # 7. Create/Return entry object
             # - get newdir attr object
             attr = newdir.get_attr()
 
@@ -416,46 +339,29 @@ class FuseApi(FUSELL):
         # verify inode exists
         if self._CR.inode_exists(parent):
 
-            # 1. LOAD PARENT INODE
-            # - load inode
-            parent_inode = self.load_inode(parent)
-            data = bytearray()
-            for x in range(int(parent_inode.size / parent_inode.block_size)):
-                data.extend(self._log.read_block(parent_inode.read_address(x)))
+            # 1. LOAD DIRECTORY
+            directory = self.load_directory(parent)
 
-            if len(data) > 0:
-                parent_inode.bytes_to_children(bytes(data))
+            # remove inode from parents children
+            inode_id = directory.children.pop(name)
 
-                # remove inode from parents children
-                inode = parent_inode.children.pop(name)
+            # write directory
+            self.write_directory(directory)
 
-                # write parent data
-                data = parent_inode.children_to_bytes()
-                number_blocks = math.ceil(len(data)/self._log.get_block_size())
-                parent_inode.size = number_blocks * self._log.get_block_size()
-                parent_inode.block_count = int(parent_inode.size / 512)
-                for x in range(number_blocks):
-                    start = x*self._log.get_block_size()
-                    end = (x+1)*self._log.get_block_size()
-                    block = data[start:end]
-                    address = self._log.write_data_block(block)
-                    parent_inode.write_address(address, x)
-                # - write parent inode to log
-                parent_inode_addr = self._log.write_inode(
-                    parent_inode.to_bytes(), parent_inode.inode_number)
-                # - update CR inode_map for parent
-                self._CR.inode_map[parent_inode.inode_number] = parent_inode_addr
+            # update inode, decrement hard link and update last changed
+            inode = self.load_inode(inode_id)
+            inode.hard_links -= 1
+            inode.status_last_changed_at = time()
+            self.write_inode(inode)
 
-                # NOTE: we do not remove the unlinked inode from the inode_map here
-                #       it should be handled by the forget call
+            # NOTE: we do not remove the unlinked inode from the inode_map here
+            #       it should be handled by the forget call
 
-                self._checkpoint_if_necessary()
+            self._checkpoint_if_necessary()
 
-                # return no error to indicate success
-                self.reply_err(req, 0)
-            else:
-                # file doesn't exist as there are no children in parent
-                self.reply_err(req, errno.ENOENT)
+            # return no error to indicate success
+            self.reply_err(req, 0)
+
         else:
             # I/O error parent does not exist
             self.reply_err(req, errno.EIO)
@@ -466,47 +372,24 @@ class FuseApi(FUSELL):
         # verify inode exists
         if self._CR.inode_exists(parent):
 
-            # 1. LOAD PARENT INODE
-            # - load inode
-            parent_inode = self.load_inode(parent)
-            data = bytearray()
-            for x in range(int(parent_inode.size / parent_inode.block_size)):
-                data.extend(self._log.read_block(parent_inode.read_address(x)))
+            # 1. LOAD CURRENT DIRECTORY
+            current_directory = self.load_directory(parent)
 
-            if len(data) > 0:
-                parent_inode.bytes_to_children(bytes(data))
+            # remove directory from parents children
+            inode = current_directory.children.pop(name)
 
-                # remove directory from parents children
-                inode = parent_inode.children.pop(name)
+            # decrement parent hard_links
+            current_directory.hard_links -= 1
 
-                # decrement parent hard_links
-                parent_inode.hard_links -= 1
+            # write current directory
+            self.write_directory(current_directory)
 
-                # write parent data
-                data = parent_inode.children_to_bytes()
-                number_blocks = math.ceil(len(data)/self._log.get_block_size())
-                parent_inode.size = number_blocks * self._log.get_block_size()
-                parent_inode.block_count = int(parent_inode.size / 512)
-                for x in range(number_blocks):
-                    start = x * self._log.get_block_size()
-                    end = (x+1) * self._log.get_block_size()
-                    block = data[start:end]
-                    address = self._log.write_data_block(block)
-                    parent_inode.write_address(address, x)
-                # - write parent inode to log
-                parent_inode_addr = self._log.write_inode(
-                    parent_inode.to_bytes(), parent_inode.inode_number)
-                # - update CR inode_map for parent
-                self._CR.inode_map[parent_inode.inode_number] = parent_inode_addr
+            # CHECKPOINT
+            self._checkpoint_if_necessary()
 
-                self._checkpoint_if_necessary()
+            # return no error
+            self.reply_err(req, 0)
 
-                # return no error
-                self.reply_err(req, 0)
-
-            else:
-                # file doesn't exist as there are no children in parent
-                self.reply_err(req, errno.ENOENT)
         else:
             # I/O error parent does not exist
             self.reply_err(req, errno.EIO)
@@ -514,175 +397,104 @@ class FuseApi(FUSELL):
     def rename(self, req, parent, name, newparent, newname):
         print('FS-RENAME:', req, parent, name, newparent, newname)
 
-        # load parent + children data
-        parent_inode = self.load_inode(parent)
-        data = bytearray()
-        for x in range(int(parent_inode.size / parent_inode.block_size)):
-            data.extend(self._log.read_block(parent_inode.read_address(x)))
+        # load current directory
+        current_directory = self.load_directory(parent)
 
-        if len(data) > 0:
-            # load parent child data
-            parent_inode.bytes_to_children(bytes(data))
+        # when parent is same as new parent, update directory name in parent
+        # when not the same, remove from parent, add to newparent
+        if (parent == newparent):
 
-            # when parent is same as new parent, update directory name in parent
-            # when not the same, remove from parent, add to newparent
-            if (parent == newparent):
+            # pop child with name from parent
+            inode = current_directory.children.pop(name)
 
-                # pop child with name from parent
-                inode = parent_inode.children.pop(name)
+            # add child with newname to parent's children
+            current_directory.children[newname] = inode
 
-                # add child with newname to parent's children
-                parent_inode.children[newname] = inode
-
-                # write parent & update inode_map
-                data = parent_inode.children_to_bytes()
-                number_blocks = math.ceil(len(data)/self._log.get_block_size())
-                parent_inode.size = number_blocks * self._log.get_block_size()
-                parent_inode.block_count = int(parent_inode.size / 512)
-                for x in range(number_blocks):
-                    start = x * self._log.get_block_size()
-                    end = (x+1) * self._log.get_block_size()
-                    block = data[start:end]
-                    address = self._log.write_data_block(block)
-                    parent_inode.write_address(address, x)
-                # - write parent inode to log
-                parent_inode_addr = self._log.write_inode(
-                    parent_inode.to_bytes(), parent_inode.inode_number)
-                # - update CR inode_map for parent
-                self._CR.inode_map[parent_inode.inode_number] = parent_inode_addr
-
-            else:
-
-                # load newparent + children data
-                newparent_inode = self.load_inode(newparent)
-                data = bytearray()
-                for x in range(int(newparent_inode.size / newparent_inode.block_size)):
-                    data.extend(self._log.read_block(
-                        newparent_inode.read_address(x)))
-
-                if len(data) > 0:
-                    newparent_inode.bytes_to_children(bytes(data))
-
-                # remove child with name from parent
-                inode = parent_inode.children.pop(name)
-
-                # add child with newname to newparent
-                newparent_inode.children[newname] = inode
-
-                # write parent data
-                data = parent_inode.children_to_bytes()
-                number_blocks = math.ceil(len(data)/self._log.get_block_size())
-                parent_inode.size = number_blocks * self._log.get_block_size()
-                parent_inode.block_count = int(parent_inode.size / 512)
-                for x in range(number_blocks):
-                    start = x * self._log.get_block_size()
-                    end = (x+1) * self._log.get_block_size()
-                    block = data[start:end]
-                    address = self._log.write_data_block(block)
-                    parent_inode.write_address(address, x)
-                # - write parent inode to log
-                parent_inode_addr = self._log.write_inode(
-                    parent_inode.to_bytes(), parent_inode.inode_number)
-
-                # write newparent data
-                data = newparent_inode.children_to_bytes()
-                number_blocks = math.ceil(len(data)/self._log.get_block_size())
-                newparent_inode.size = number_blocks * self._log.get_block_size()
-                newparent_inode.block_count = int(newparent_inode.size / 512)
-                for x in range(number_blocks):
-                    start = x * self._log.get_block_size()
-                    end = (x+1) * self._log.get_block_size()
-                    block = data[start:end]
-                    address = self._log.write_data_block(block)
-                    newparent_inode.write_address(address, x)
-                # - write parent inode to log
-                newparent_inode_addr = self._log.write_inode(
-                    newparent_inode.to_bytes(), newparent_inode.inode_number)
-
-                # update parent inode_map
-                self._CR.inode_map[parent_inode.inode_number] = parent_inode_addr
-
-                # update newparent inode_map
-                self._CR.inode_map[newparent_inode.inode_number] = newparent_inode_addr
-
-            # checkpoint
-            self._checkpoint_if_necessary()
-
-            self.reply_err(req, 0)
+            # write current directory
+            self.write_directory(current_directory)
 
         else:
-            # if there is no children, there is an issue,
-            # a rename cannot happen without children
-            self.reply_err(req, errno.EIO)
+
+            # load new directory
+            new_directory = self.load_directory(newparent)
+
+            # remove child with name from current directory
+            inode = current_directory.children.pop(name)
+
+            # add child with newname to newparent
+            new_directory.children[newname] = inode
+
+            # write current directory
+            self.write_directory(current_directory)
+
+            # write newparent data
+            self.write_directory(new_directory)
+
+        # checkpoint
+        self._checkpoint_if_necessary()
+
+        # return no error
+        self.reply_err(req, 0)
+
 
     def link(self, req, ino, newparent, newname):
         print('FS-LINK:', req, ino, newparent, newname)
 
-        # 1. LOAD & MODIFY (NEW)PARENT
-        parent = self.load_inode(newparent)
+        # 1. LOAD DIRECTORY
+        directory = self.load_directory(newparent)
 
-        data = bytearray()
-        for x in range(int(parent.size / parent.block_size)):
-            data.extend(self._log.read_block(parent.read_address(x)))
+        # - add newname to directory
+        directory.children[newname] = ino
 
-        if len(data) > 0:
-            parent.bytes_to_children(bytes(data))
+        # - increase directory hard links
+        directory.hard_links += 1
 
-        # - add new directory to children
-        parent.children[newname] = ino
+        # 2. LOAD TARGET FILE
+        target_file = self.load_inode(ino)
 
-        # - increase newparent hard links
-        parent.hard_links += 1
+        # - increase target files hard links (since there are 2 hard links to file)
+        target_file.hard_links += 1
+        target_file.status_last_changed_at = time()
 
-        # 2. LOAD & MODIFY (TARGET) INODE
-        inode = self.load_inode(ino)
+        # 3. WRITE TARGET FILE INODE
+        self.write_inode(target_file)
 
-        # - increase inode hard links (since there are 2 hard links to file)
-        inode.hard_links += 1
+        # 4. WRITE DIRECTORY TO LOG & UPDATE inode map
+        self.write_directory(directory)
 
-        # 3. WRITE INODE TO LOG & UPDATE inode map
-        inode_addr = self._log.write_inode(inode.to_bytes(), inode.inode_number)
-        self._CR.inode_map[inode.inode_number] = inode_addr
-
-        # 4. WRITE PARENT INODE TO LOG & UPDATE inode map
-
-        # write parent data
-        data = parent.children_to_bytes()
-        number_blocks = math.ceil(len(data)/self._log.get_block_size())
-        parent.size = number_blocks * self._log.get_block_size()
-        parent.block_count = int(parent.size / 512)
-        for x in range(number_blocks):
-            start = x * self._log.get_block_size()
-            end = (x+1) * self._log.get_block_size()
-            block = data[start:end]
-            address = self._log.write_data_block(block)
-            parent.write_address(address, x)
-
-        # - write parent inode to log
-        parent_inode_addr = self._log.write_inode(
-            parent.to_bytes(), parent.inode_number)
-
-        # - update CR inode_map for parent
-        self._CR.inode_map[parent.inode_number] = parent_inode_addr
-
+        # 5. CHECKPOINT
         self._checkpoint_if_necessary()
 
-        attr = inode.get_attr()
+        # 6. RETURN ENTRY FOR INODE W/ ATTRIBUTES
+        attr = target_file.get_attr()
 
         if attr:
             # - create entry
-            entry = dict(ino=inode.inode_number,
+            entry = dict(ino=target_file.inode_number,
                          attr=attr,
                          attr_timeout=1.0,
                          entry_timeout=1.0)
             # reply with entry
             self.reply_entry(req, entry)
+        else:
+            return dict()
 
     def open(self, req, ino, fi):
         print('FS-OPEN:', req, ino)
 
         # verify inode exists, return open reply or error
         if self._CR.inode_exists(ino):
+
+            # load inode
+            inode = self.load_inode(ino)
+
+            # update access time
+            now = time()
+            inode.last_accessed_at = now
+
+            # write inode
+            self.write_inode(inode)
+
             self.reply_open(req, fi)
         else:
             self.reply_err(req, errno.EIO)
@@ -696,21 +508,16 @@ class FuseApi(FUSELL):
             # 1. LOAD INODE
             inode = self.load_inode(ino)
 
-            # determine number of blocks of data to read based on requetsed size
-            block_count = math.ceil(size / self._log.get_block_size())
+            if inode.size > 0:
+           
+                # read data from file
+                data = self.read_file(inode, size, off)
 
-            # define file_offset
-            file_offset = off // self._log.get_block_size()
+                # return exact number of bytes
+                self.reply_buf(req, data[0:size])
 
-            # load data into byte array, then return requested bytes
-            data = bytearray()
-            for x in range(block_count):
-                # get address for block
-                block_address = inode.read_address(file_offset * x)
-                # get data
-                data.extend(self._log.read_block(block_address))
-
-            self.reply_buf(req, bytes(data)[0:size])
+            else:
+                self.reply_buf(req, b'')
 
         else:
             self.reply_err(req, errno.ENOENT)
@@ -721,42 +528,13 @@ class FuseApi(FUSELL):
         # verify inode exists
         if self._CR.inode_exists(ino):
 
-            # 1. LOAD INODE
+            # 1. LOAD FILE
             inode = self.load_inode(ino)
 
-            # 2. Write buffer (buf) to log in blocksize units updating
-            #    block_addresess in inode to reflect data positioning in file.
-            block_count = math.ceil(len(buf) / self._log.get_block_size())
+            # 2. WRITE FILE DATA TO LOG
+            self.write_file(inode, buf, off)
 
-            # -- get file_offset, off should be evenly divisible by block_size
-            file_offset = off // self._log.get_block_size()
-
-            # furthest write
-            write_offset = 0
-            for x in range(block_count):
-                start = x*self._log.get_block_size()
-                end = (x+1)*self._log.get_block_size()
-                block = buf[start:end]
-                address = self._log.write_data_block(block)
-                inode.write_address(address, file_offset + x)
-
-            # 3. Increase Size attribute if file grew
-            max_write_size = len(buf) + (file_offset *
-                                         self._log.get_block_size())
-            if (max_write_size > inode.size):
-                inode.size = max_write_size
-                inode.block_count = math.ceil(max_write_size / 512)
-
-            # update modified attr
-            inode.last_modified_at = time()
-
-            # 3. Write Inode to log
-            inode_addr = self._log.write_inode(
-                inode.to_bytes(), inode.inode_number)
-
-            # 4. Update CR Inode Map
-            self._CR.inode_map[ino] = inode_addr
-
+            # 3. CHECKPOINT
             self._checkpoint_if_necessary()
 
             # return the length of the data written
@@ -770,14 +548,7 @@ class FuseApi(FUSELL):
         print('FS-READDIR:', req, ino, size, off, fi)
 
         # 1. LOAD DIRECTORY INODE
-        directory = self.load_inode(ino)
-        data = bytearray()
-        number_blocks = int(directory.size / directory.block_size)
-        for x in range(number_blocks):
-            data.extend(self._log.read_block(directory.read_address(x)))
-
-        if len(data) > 0:
-            directory.bytes_to_children(bytes(data))
+        directory = self.load_directory(ino)
 
         # 2. BUILD DEFUALT LIST OF ENTRIES
         entries = [
@@ -803,27 +574,74 @@ class FuseApi(FUSELL):
 
         self.reply_readdir(req, size, off, entries)
 
-    def create(self, req, parent, name, mode, fi):
-        print('FS-CREATE', req, parent, name, mode, fi)
-        """Create and open a file
+    def symlink(self, req, link, parent, name):
+        print('symlink:', req, link, parent, name)
 
-        Valid replies:
-            reply_create
-            reply_err
-        """
-        self._checkpoint_if_necessary()
-        self.reply_err(req, errno.ENOSYS)
+        # create symlink inode
+        link_node = INode()
+        link_node.inode_number = self._CR.next_inode_id()
+
+        # - obtain uid/gid info via req
+        ctx = self.req_ctx(req)
+        link_node.uid = ctx['uid']
+        link_node.gid = ctx['gid']
+
+        # - set mode to S_IFLNK w/ 777 permissions
+        link_node.mode = S_IFLNK | 0o777
+      
+        # - set hard links to 1, for itself
+        link_node.hard_links = 1
+
+        # - set time attributes
+        now = time()
+        link_node.last_accessed_at = now
+        link_node.last_modified_at = now
+        link_node.status_last_changed_at = now
+
+        # write symlink to log
+        self.write_symlink(link_node, link)
+
+        # load directory
+        directory = self.load_directory(parent)
+        
+        # update parent
+        directory.children[name] = link_node.inode_number
+
+        # write directory to log
+        self.write_directory(directory)
+
+        # - get newdir attr object
+        attr = link_node.get_attr()
+
+        if attr:
+            # - create entry
+            entry = dict(ino=link_node.inode_number,
+                         attr=attr,
+                         attr_timeout=1.0,
+                         entry_timeout=1.0)
+            # reply with entry
+            self.reply_entry(req, entry)
+        else:
+            # I/O error, was not able to obtain attr for new directory
+            self.reply_err(req, errno.EIO)
+
+
+    def readlink(self, req, ino):
+        print('readlink:', req, ino)
+
+        # load inode
+        inode = self.load_inode(ino)
+
+        # read link from inode data
+        link = self.read_symlink(inode)
+
+        # reply with link
+        self.reply_readlink(req, link)
 
     # ************
     # adding other possible functions which we may need to implement
     # based on the fusell.py code and libfuse library information
     # ************
-
-    def readlink(self, req, ino):
-        print('readlink:', req, ino)
-
-        # error because its not implemented
-        self.reply_err(req, errno.ENOENT)
 
     def release(self, req, ino, fi):
         print('FS-RELEASE:', req, ino, fi)
@@ -887,10 +705,6 @@ class FuseApi(FUSELL):
         # error because its not implemented
         self.reply_err(req, errno.ENOSYS)
 
-    def symlink(self, req, link, parent, name):
-        print('symlink:', req, link, parent, name)
-        # error ENOENT to stop process
-        self.reply_err(req, errno.ENOSYS)
 
 # following functions may not be required, but if we have time we can implement
 # them for more functionality
@@ -918,6 +732,161 @@ class FuseApi(FUSELL):
 ##        print('fsyncdir:', req, ino, datasync, fi)
 # return no error
 # self.reply_err(req,0)
+
+
+### Helper methods ###
+
+    # this method will load a directory inode from the log
+    # it can optionally not load children if they are not needed
+    def load_directory(self, inode_id, load_children=True):
+
+        # load inode from inode_id
+        inode = self.load_inode(inode_id)
+
+        # load directory data and set children
+        if load_children:
+            data = bytearray()
+            for x in range(int(inode.size / inode.block_size)):
+                data = self.read_data_block(inode, data, x)
+
+            if len(bytes(data)) > 0:
+                inode.bytes_to_children(bytes(data))
+
+        # return created inode
+        return inode
+
+    # this method will write a directory inode to the log
+    def write_directory(self, inode, write_children=True):
+        
+        # there could be situations where the contents of a directory do not
+        # change, but its attributes do.
+        if write_children:
+
+            # get inode data & set size/block_count attributes
+            data = inode.children_to_bytes()
+            number_blocks = math.ceil(len(data)/self._log.get_block_size())
+            # directory size is always an increment of system block_size (page_size)
+            inode.size = number_blocks * self._log.get_block_size()
+
+            # iterate through data block by block and write to log
+            for x in range(number_blocks):
+                inode = self.write_data_block(inode, data, x)
+
+        # - write inode to log
+        self.write_inode(inode)
+
+    # this method will write a directory inode to the log
+    def write_symlink(self, inode, link):
+        
+        # get inode data & set size/block_count attributes
+        data = link.encode('utf-8')
+        number_blocks = math.ceil(len(data)/self._log.get_block_size())
+        # directory size is always an increment of system block_size (page_size)
+        inode.size = len(data)
+
+        # iterate through data block by block and write to log
+        for x in range(number_blocks):
+            inode = self.write_data_block(inode, data, x)
+
+        # - write inode to log
+        self.write_inode(inode)
+
+    def read_symlink(self, inode):
+        block_count = math.ceil(inode.size / self._log.get_block_size())
+        data = bytearray()
+        for x in range(block_count):
+            data = self.read_data_block(inode, data, x)
+
+        link = data.decode('utf-8')[0:inode.size]
+        
+        return link
+
+
+    # read_file - will return data from a file, based on the size an offset
+    def read_file(self, inode, size, offset):
+
+        data = bytearray()
+
+        if size>0:
+
+            # determine number of blocks of data to read based on requetsed size
+            block_count = math.ceil(size / self._log.get_block_size())
+
+            # define file_offset , offset should be divisible by our block_size
+            file_offset = offset // self._log.get_block_size()
+
+            # load data into byte array, then return requested bytes
+            for x in range(block_count):
+                data = self.read_data_block(inode, data, x, file_offset)
+
+        # return bytes
+        return bytes(data)
+
+
+    def write_file(self, inode, buf, off):
+
+        # determine number of blocks to write
+        block_count = math.ceil(len(buf) / self._log.get_block_size())
+
+        # get file_offset, off should be evenly divisible by block_size
+        file_offset = off // self._log.get_block_size()
+
+        # furthest write, will be used to set new size
+        for x in range(block_count):
+            inode = self.write_data_block(inode, buf, x, file_offset)
+
+        # 3. Increase Size attribute if file grew
+        max_write_size = len(buf) + (file_offset *
+                                     self._log.get_block_size())
+        if (max_write_size > inode.size):
+            inode.size = max_write_size
+
+        # update modified attr
+        now = time()
+        inode.last_modified_at = now
+        inode.status_last_changed_at = now
+
+        # 3. Write Inode to log
+        self.write_inode(inode)
+ 
+
+    def write_inode(self, inode):
+
+        # write inode to log
+        inode_addr = self._log.write_inode(inode.to_bytes(), inode.inode_number)
+
+        # - update CR inode_map for inode
+        self._CR.inode_map[inode.inode_number] = inode_addr
+
+    # method writes a single block to log, and updates inode address info
+    def write_data_block(self, inode, data, x, file_offset=0):
+        start = x * self._log.get_block_size()
+        end = (x + 1) * self._log.get_block_size()
+        block = data[start:end]
+        address = self._log.write_data_block(block)
+        inode.write_address(address, file_offset + x)
+        return inode
+
+    def read_data_block(self, inode, data, x, file_offset=0):
+        block_address = inode.read_address(file_offset + x)
+        data.extend(self._log.read_block(block_address))
+        return data
+
+    def load_inode(self, inode_id):
+        # obtain inode address from imap
+        try:
+            inode_address = self._CR.inode_map[inode_id]
+
+            # read inode data from log
+            inode_data = self._log.read_block(inode_address)
+        
+            # load inode from log
+            return INode.from_bytes(inode_data)
+
+        except KeyError:
+
+            print("INode (", inode_id, ") not found in inode_map!")
+            self.reply_err(req, errno.EIO)
 
     def _checkpoint_if_necessary(self):
         current_time = int(time())
