@@ -150,8 +150,6 @@ class FuseApi(FUSELL):
                         inode.status_last_changed_at = time()
                     elif key == "st_size":
                         inode.size = attr["st_size"]
-                    elif key == "st_blocks":
-                        inode.block_count = attr["st_blocks"]
                     elif key == "st_blksize":
                         inode.block_size = attr["st_blksize"]
                     elif key == "st_nlink":
@@ -282,7 +280,6 @@ class FuseApi(FUSELL):
 
             # - set size / block info
             newdir.size = self._log.get_block_size()
-            newdir.block_count = int(self._log.get_block_size() / 512)
             newdir.block_size = self._log.get_block_size()
 
             # - obtain uid/gid info via req
@@ -770,7 +767,6 @@ class FuseApi(FUSELL):
             number_blocks = math.ceil(len(data)/self._log.get_block_size())
             # directory size is always an increment of system block_size (page_size)
             inode.size = number_blocks * self._log.get_block_size()
-            inode.block_count = int(inode.size / 512)
 
             # iterate through data block by block and write to log
             for x in range(number_blocks):
@@ -787,7 +783,6 @@ class FuseApi(FUSELL):
         number_blocks = math.ceil(len(data)/self._log.get_block_size())
         # directory size is always an increment of system block_size (page_size)
         inode.size = len(data)
-        inode.block_count = int(inode.size / 512)
 
         # iterate through data block by block and write to log
         for x in range(number_blocks):
@@ -845,7 +840,6 @@ class FuseApi(FUSELL):
                                      self._log.get_block_size())
         if (max_write_size > inode.size):
             inode.size = max_write_size
-            inode.block_count = math.ceil(max_write_size / 512)
 
         # update modified attr
         now = time()
