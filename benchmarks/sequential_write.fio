@@ -1,0 +1,7 @@
+[sequential-write]
+ioengine=sync
+rw=write
+direct=1
+sync=1
+size=64K
+fallocate=none

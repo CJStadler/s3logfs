@@ -1,0 +1,25 @@
+rand-read: (g=0): rw=randread, bs=4K-4K/4K-4K/4K-4K, ioengine=sync, iodepth=1
+fio-2.16
+Starting 1 process
+
+rand-read: (groupid=0, jobs=1): err= 0: pid=14329: Thu Apr 19 18:12:52 2018
+  read : io=65536B, bw=91022B/s, iops=22, runt=   720msec
+    clat (usec): min=99, max=81514, avg=38884.06, stdev=35498.19
+     lat (usec): min=99, max=81515, avg=38884.44, stdev=35498.43
+    clat percentiles (usec):
+     |  1.00th=[   99],  5.00th=[   99], 10.00th=[  101], 20.00th=[  107],
+     | 30.00th=[  115], 40.00th=[  189], 50.00th=[65280], 60.00th=[66048],
+     | 70.00th=[68096], 80.00th=[69120], 90.00th=[70144], 95.00th=[81408],
+     | 99.00th=[81408], 99.50th=[81408], 99.90th=[81408], 99.95th=[81408],
+     | 99.99th=[81408]
+    lat (usec) : 100=6.25%, 250=37.50%
+    lat (msec) : 100=56.25%
+  cpu          : usr=0.00%, sys=0.00%, ctx=20, majf=0, minf=7
+  IO depths    : 1=100.0%, 2=0.0%, 4=0.0%, 8=0.0%, 16=0.0%, 32=0.0%, >=64=0.0%
+     submit    : 0=0.0%, 4=100.0%, 8=0.0%, 16=0.0%, 32=0.0%, 64=0.0%, >=64=0.0%
+     complete  : 0=0.0%, 4=100.0%, 8=0.0%, 16=0.0%, 32=0.0%, 64=0.0%, >=64=0.0%
+     issued    : total=r=16/w=0/d=0, short=r=0/w=0/d=0, drop=r=0/w=0/d=0
+     latency   : target=0, window=0, percentile=100.00%, depth=1
+
+Run status group 0 (all jobs):
+   READ: io=64KB, aggrb=88KB/s, minb=88KB/s, maxb=88KB/s, mint=720msec, maxt=720msec

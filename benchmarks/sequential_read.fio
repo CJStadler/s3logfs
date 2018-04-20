@@ -1,0 +1,7 @@
+[sequential-read]
+ioengine=sync
+rw=read
+direct=1
+sync=1
+size=64K
+fallocate=none

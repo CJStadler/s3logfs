@@ -1,0 +1,8 @@
+[rand-write]
+ioengine=sync
+rw=randwrite
+direct=1
+sync=1
+size=64K
+runtime=60s
+fallocate=none
