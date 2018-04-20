@@ -10,15 +10,15 @@ import math
 
 import pickle
 
-ST_BLOCKS_SIZE = 512  # only used to calculate st_blocks, not related to
-                      # inode block_size
-
 class INode:
+
+    ST_BLOCKS_SIZE = 512  # only used to calculate st_blocks, not related inode.block_size
     NUMBER_OF_DIRECT_BLOCKS = 16
     STRUCT_FORMAT = 'QQQIIIIIIIddd' # Plus block addresses
     STRUCT = Struct(STRUCT_FORMAT)
 
     def __init__(self):
+
         # unique inode id
         self.inode_number = 0
         # parent inode id, to make it easier to implement ".."
@@ -52,6 +52,9 @@ class INode:
         self.status_last_changed_at = now # st_ctime
         self.block_offset = 0
         self.block_addresses = self.NUMBER_OF_DIRECT_BLOCKS * [BlockAddress()]
+        self.indirect_lvl1 = BlockAddress(0,0)
+        self.indirect_lvl2 = BlockAddress(0,0)
+        self.indirect_lvl3 = BlockAddress(0,0)
         # for directory lookups, will be populated from data after inode is loaded
         self.children = {}
 
@@ -81,11 +84,27 @@ class INode:
             inode.status_last_changed_at
         ) = unpacked_values
 
-        address_size = len(addresses_bytes) // klass.NUMBER_OF_DIRECT_BLOCKS
+        address_size = BlockAddress.get_address_size()
         for i in range(klass.NUMBER_OF_DIRECT_BLOCKS):
             offset = i * address_size
             address_bytes = addresses_bytes[offset:offset + address_size]
             inode.block_addresses[i] = BlockAddress(address_bytes)
+
+        # indirect lvl1
+        offset = klass.NUMBER_OF_DIRECT_BLOCKS
+        address_bytes = addresses_bytes[offset:offset + address_size]
+        inode.indirect_lvl1 = BlockAddress(address_bytes)
+
+        # indirect lvl2
+        offset += 1
+        address_bytes = addresses_bytes[offset:offset + address_size]
+        inode.indirect_lvl2 = BlockAddress(address_bytes)
+
+        # indirect lvl3
+        offset += 1
+        offset = klass.NUMBER_OF_DIRECT_BLOCKS
+        address_bytes = addresses_bytes[offset:offset + address_size]
+        inode.indirect_lvl3 = BlockAddress(address_bytes)
 
         return inode
 
@@ -113,6 +132,10 @@ class INode:
             address = self.block_addresses[i]
             data.extend(address.to_bytes())
 
+        data.extend(self.indirect_lvl1.to_bytes())
+        data.extend(self.indirect_lvl2.to_bytes())
+        data.extend(self.indirect_lvl3.to_bytes())
+
         return bytes(data)
 
     # returns True if iNode is a directory
@@ -136,7 +159,7 @@ class INode:
         self.mode = (self.mode ^ S_IFMT(self.mode)) | inode_ntype
 
     def get_stblocks(self):
-        return math.ceil(self.size / ST_BLOCKS_SIZE)
+        return math.ceil(self.size / self.ST_BLOCKS_SIZE)
 
     # returns an attr dict object for inode, used by FUSE
     def get_attr(self):
@@ -186,20 +209,125 @@ class INode:
     # this method allows us to set the address at the next block_offset
     # NOTE: needs to be extended with indirect pointers
     def write_address(self, address, offset=''):
+        # if offset is empty, use block_offset 
         if (offset==''):
-            if (self.block_offset < self.NUMBER_OF_DIRECT_BLOCKS):
-                self.block_addresses[self.block_offset] = address
-                self.block_offset += 1
-            else:
-                # INDIRECT BLOCKS
-                return NotImplemented
+            offset = self.block_offset
+
+        if (offset < self.NUMBER_OF_DIRECT_BLOCKS):
+            self.block_addresses[offset] = address
+            self.block_offset += 1
         else:
-            if (offset < self.NUMBER_OF_DIRECT_BLOCKS):
-                self.block_addresses[offset] = address
-                self.block_offset = offset + 1
+            # sizing
+            block_size = self._log.get_block_size()
+            address_size = BlockAddress.get_address_size()
+
+            # obtain offsets for indirect address space
+            offsets = self.get_indirect_offsets(offset, block_size, address_size)
+
+            # list of address_blocks
+            address_blocks = []
+
+            # read first block of addresses
+            if len(offsets) == 1:      # lvl1
+
+                # get address block
+                address_block = self._log.read_block(self.indirect_lvl1)
+
+                # set address at offset in block
+
+                # write block
+
+                # update indirect_lvl1 to new block address from write
+                
+            elif len(offsets) == 2:    # lvl2
+
+                # get block
+                address_block = self._log.read_block(self.indirect_lvl2)
+
+                # get address from offset in block
+
+                # get next address block
+
+                # replace address in block
+
+                # write block
+
+                # replace address in first block
+
+                # write first block
+
+                # update indirect_lvl2 to new address
+
+            elif len(offsets) == 3:    # lvl3
+                address_block = self._log.read_block(self.indirect_lvl3)
             else:
-                # INDIRECT BLOCKS
                 return NotImplemented
+
+            # add block to list, list is needed for writing out the block chain later
+            address_blocks.append(address_block)
+
+            # loop through offsets, and read down to data
+            for x in offsets:
+                start = x * address_size
+                end = start + address_size
+                next_addr = BlockAddress(address_block[start:end])
+                address_block = self._log.read_block(next_addr)
+
+
+    # this will obtain the offsets at each level of reads to get to a data block
+    # it will return an equal number of elements to the number of reads deep
+    # Ex: offset 1,000,000, block_size 4096, address_size 8 will be 2,416,48
+    def get_indirect_offsets(self, offset, block_size, address_size):
+
+        # calculate addresses per block
+        address_per_block = block_size // BlockAddress.get_address_size()
+
+        # base adjustment
+        lvl1_max = self.NUMBER_OF_DIRECT_BLOCKS + address_per_block
+        lvl2_max = lvl1_max + address_per_block**2
+        lvl3_max = lvl2_max + address_per_block**3
+
+        # define empty offsets list
+        offsets = []
+
+        if offset < lvl1_max:
+
+            # calculate lvl1 offset
+            adj_offset = offset - self.NUMBER_OF_DIRECT_BLOCKS
+            lvl1 = adj_offset
+            offsets.append(lvl1)
+
+        elif offset < lvl2_max:
+
+            # calculate lvl2 offset
+            adj_offset = offset - lvl1_max
+            lvl2 = adj_offset // address_per_block
+            offsets.append(lvl2)
+
+            # calculate lvl1 offset
+            adj_offset = adj_offset - (address_per_block * lvl2)
+            lvl1 = adj_offset
+            offsets.append(lvl1)
+
+        elif offset < lvl3_max:
+
+            # calculate lvl3 offset
+            adj_offset = offset - lvl2_max
+            lvl3 = adj_offset // address_per_block**2
+            offsets.append(lvl3)
+
+            # calculate lvl2 offset
+            adj_offset = adj_offset - (address_per_block**2 * lvl3)
+            lvl2 = adj_offset // address_per_block
+            offsets.append(lvl2)
+
+            # calculate lvl1 offset
+            adj_offset = adj_offset - (address_per_block * lvl2)
+            lvl1 = adj_offset
+            offsets.append(lvl1)
+
+        return offsets
+
 
         # increase block_count if we just wrote an address to a higher
 # BCH        if (self.block_count < self.block_offset):

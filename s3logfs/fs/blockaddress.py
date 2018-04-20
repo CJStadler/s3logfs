@@ -1,5 +1,8 @@
 import struct
 
+# combined these make a single address
+ADDR_SEGMENT_BYTES = 6
+ADDR_OFFSET_BYTES = 2
 
 class BlockAddress:
 
@@ -12,10 +15,10 @@ class BlockAddress:
             self.segmentid = 0
             self.offset = 0
         elif (len(args) == 1):  # bytearray
-            # first 6 bytes is segmentid (placed in unsigned long long)
-            self.segmentid = struct.unpack("<Q", bytes(args[0][0:6]) + b'\x00\x00')[0]
-            # last 2 bytes is offset (placed in unsigned short)
-            self.offset = struct.unpack("<H", args[0][6:8])[0]
+            # first x bytes is segmentid (placed in unsigned long long)
+            self.segmentid = struct.unpack("<Q", bytes(args[0][0:ADDR_SEGMENT_BYTES]) + b'\x00\x00')[0]
+            # last y bytes is offset (placed in unsigned short)
+            self.offset = struct.unpack("<H", args[0][ADDR_SEGMENT_BYTES:ADDR_SEGMENT_BYTES+ADDR_OFFSET_BYTES])[0]
         elif (len(args) == 2):  # segmentid & offset
             # first argument is segmentid
             self.segmentid = args[0]
@@ -35,15 +38,19 @@ class BlockAddress:
     def __hash__(self):
         return hash((self.segmentid, self.offset))
 
-    # returns BlockAddress as a list of 8 bytes
+    # returns BlockAddress as a list of bytes
     def to_bytes(self):
-        b1 = (self.segmentid).to_bytes(6, byteorder='little', signed=False)
-        b2 = (self.offset).to_bytes(2, byteorder='little', signed=False)
-        return b1[0:6] + b2[0:2]
+        b1 = (self.segmentid).to_bytes(ADDR_SEGMENT_BYTES, byteorder='little', signed=False)
+        b2 = (self.offset).to_bytes(ADDR_OFFSET_BYTES, byteorder='little', signed=False)
+        return b1[0:ADDR_SEGMENT_BYTES] + b2[0:ADDR_OFFSET_BYTES]
 
     # set's a block address from bytes
     def from_bytes(self, data):
-            # first 6 bytes is segmentid (placed in unsigned long long)
-        self.segmentid = struct.unpack("<Q", data[0:6] + b'\x00\x00')[0]
-        # last 2 bytes is offset (placed in unsigned short)
-        self.offset = struct.unpack("<H", data[6:8])[0]
+            # first X bytes is segmentid (placed in unsigned long long)
+        self.segmentid = struct.unpack("<Q", data[0:ADDR_SEGMENT_BYTES] + b'\x00\x00')[0]
+        # last Y bytes is offset (placed in unsigned short)
+        self.offset = struct.unpack("<H", data[ADDR_SEGMENT_BYTES:ADDR_SEGMENT_BYTES+ADDR_OFFSET_BYTES])[0]
+
+    # returns the number of blocks for a address in the log
+    def get_address_size():
+        return ADDR_SEGMENT_BYTES+ADDR_OFFSET_BYTES
