@@ -217,62 +217,7 @@ class INode:
             self.block_addresses[offset] = address
             self.block_offset += 1
         else:
-            # sizing
-            block_size = self._log.get_block_size()
-            address_size = BlockAddress.get_address_size()
-
-            # obtain offsets for indirect address space
-            offsets = self.get_indirect_offsets(offset, block_size, address_size)
-
-            # list of address_blocks
-            address_blocks = []
-
-            # read first block of addresses
-            if len(offsets) == 1:      # lvl1
-
-                # get address block
-                address_block = self._log.read_block(self.indirect_lvl1)
-
-                # set address at offset in block
-
-                # write block
-
-                # update indirect_lvl1 to new block address from write
-                
-            elif len(offsets) == 2:    # lvl2
-
-                # get block
-                address_block = self._log.read_block(self.indirect_lvl2)
-
-                # get address from offset in block
-
-                # get next address block
-
-                # replace address in block
-
-                # write block
-
-                # replace address in first block
-
-                # write first block
-
-                # update indirect_lvl2 to new address
-
-            elif len(offsets) == 3:    # lvl3
-                address_block = self._log.read_block(self.indirect_lvl3)
-            else:
-                return NotImplemented
-
-            # add block to list, list is needed for writing out the block chain later
-            address_blocks.append(address_block)
-
-            # loop through offsets, and read down to data
-            for x in offsets:
-                start = x * address_size
-                end = start + address_size
-                next_addr = BlockAddress(address_block[start:end])
-                address_block = self._log.read_block(next_addr)
-
+            return NotImplemented
 
     # this will obtain the offsets at each level of reads to get to a data block
     # it will return an equal number of elements to the number of reads deep
@@ -327,6 +272,19 @@ class INode:
             offsets.append(lvl1)
 
         return offsets
+
+    def get_max_indirect_offset(self, block_size, address_size, indirect_lvl):
+
+        # add direct block count
+        max_offset = self.NUMBER_OF_DIRECT_BLOCKS
+
+        # add each layer of indirect max offset
+        for x in range(indirect_lvl):
+            max_offset += (block_size//address_size)**(x+1)
+
+        print(max_offset)
+
+        return max_offset
 
 
         # increase block_count if we just wrote an address to a higher

@@ -10,6 +10,7 @@ import math
 from time import time
 from fusell import FUSELL
 from botocore.exceptions import ClientError
+from collections import deque
 
 from .fs import CheckpointRegion
 from .backends import S3Bucket, DiskCache, MemoryCache
@@ -781,6 +782,7 @@ class FuseApi(FUSELL):
         # get inode data & set size/block_count attributes
         data = link.encode('utf-8')
         number_blocks = math.ceil(len(data)/self._log.get_block_size())
+
         # directory size is always an increment of system block_size (page_size)
         inode.size = len(data)
 
@@ -829,14 +831,45 @@ class FuseApi(FUSELL):
         block_count = math.ceil(len(buf) / self._log.get_block_size())
 
         # get file_offset, off should be evenly divisible by block_size
-        file_offset = off // self._log.get_block_size()
+        initial_offset = off // self._log.get_block_size()
 
-        # furthest write, will be used to set new size
-        for x in range(block_count):
-            inode = self.write_data_block(inode, buf, x, file_offset)
+        # write data to log, and get list of addresses for inode
+        addresses = self.write_data_blocks(buf)
+
+        # offset will increment as we work our way through the direct/indirect
+        # address
+        offset = initial_offset
+        block_size = self._log.get_block_size()
+        address_size = BlockAddress.get_address_size()
+
+        # update inode direct addresses
+        if (offset < inode.NUMBER_OF_DIRECT_BLOCKS):
+            while True:
+                # loop until offset exceeds direct blocks or no addresses left
+                if offset == inode.NUMBER_OF_DIRECT_BLOCKS or \
+                   len(addresses) == 0:
+                    break;
+                # write address and increment to next offset
+                inode.write_address(addresses.pop(), offset)
+                offset += 1
+
+        # check lvl1 offsets
+        if len(addresses) > 0 and \
+            offset < inode.get_max_indirect_offset(block_size,address_size,1):
+                print("extended lvl1 support here")
+
+        # check lvl2 offsets
+        if len(addresses) > 0 and \
+            offset < inode.get_max_indirect_offset(block_size,address_size,2):
+                print("extended lvl2 support here")
+
+        # check lvl3 offsets
+        if len(addresses) > 0 and \
+            offset < inode.get_max_indirect_offset(block_size,address_size,3):
+                print("extended lvl3 support here")
 
         # 3. Increase Size attribute if file grew
-        max_write_size = len(buf) + (file_offset *
+        max_write_size = len(buf) + (initial_offset *
                                      self._log.get_block_size())
         if (max_write_size > inode.size):
             inode.size = max_write_size
@@ -866,6 +899,31 @@ class FuseApi(FUSELL):
         address = self._log.write_data_block(block)
         inode.write_address(address, file_offset + x)
         return inode
+
+    # method will write a number of blocks of data, and return a 
+    # list of addresses that will need to be updated in the 
+    # corresponding inode
+    def write_data_blocks(self, buf):
+
+        # addresses list, using deque for appendleft / pop O(1) performance
+        addresses = deque()
+
+        # obtain number of blocks we will need to write
+        write_count = math.ceil(len(buf) / self._log.get_block_size())
+        # iterate and write
+
+        for x in range(write_count):
+
+            # slice block of data
+            start = x * self._log.get_block_size()
+            end = (x + 1 ) * self._log.get_block_size()
+            block = buf[start:end]
+            # write block and append address
+            addresses.appendleft(self._log.write_data_block(block))
+
+        # return addresses
+        return addresses
+
 
     def read_data_block(self, inode, data, x, file_offset=0):
         block_address = inode.read_address(file_offset + x)
