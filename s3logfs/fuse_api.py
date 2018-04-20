@@ -17,6 +17,7 @@ from .backends import S3Bucket, DiskCache, MemoryCache
 from .fs import Log, ReadOnlySegment
 from .fs import INode
 from .fs import BlockAddress
+from .fs import AddressBlock
 
 
 class FuseApi(FUSELL):
@@ -805,7 +806,7 @@ class FuseApi(FUSELL):
 
 
     # read_file - will return data from a file, based on the size an offset
-    def read_file(self, inode, size, offset):
+    def read_file(self, inode, size, off):
 
         data = bytearray()
 
@@ -815,11 +816,78 @@ class FuseApi(FUSELL):
             block_count = math.ceil(size / self._log.get_block_size())
 
             # define file_offset , offset should be divisible by our block_size
-            file_offset = offset // self._log.get_block_size()
+            initial_offset = off // self._log.get_block_size()
+
+            # get list of addresses that need to be read
+            addresses = deque()
+
+            # offset will increment as we work our way through the direct/indirect
+            # address
+            offset = initial_offset
+            block_size = self._log.get_block_size()
+            address_size = BlockAddress.get_address_size()
+            direct_count = inode.NUMBER_OF_DIRECT_BLOCKS
+            addr_block_count = block_size // address_size
+
+            # iterate through direct blocks obtaining addresses to read
+            if (offset < direct_count):
+                while True:
+                    # loop until offset exceeds direct blocks or no addresses left
+                    if offset == direct_count or \
+                       block_count == 0:
+                        break;
+                    # write address and increment to next offset
+                    addresses.appendleft(inode.read_address(offset))
+                    offset += 1
+                    block_count -= 1
+
+            # check lvl1 offsets
+            lvl1_max = inode.get_max_indirect_offset(block_size,address_size,1)
+            if block_count > 0 and offset < lvl1_max:
+            
+                # check if indirect_lvl is set, if not, populate empty addresses
+                # otherwise load the AddressBlock and read in addresses
+                if (inode.indirect_lvl1 == BlockAddress()):
+
+                    # see if remaining block_count fits in remaining lvl blocks
+                    lvl1_offset = (addr_block_count - offset - direct_count)
+                    if (block_count + lvl1_offset) < addr_block_count:
+                        for x in range(block_count):
+                            addresses.appendleft(BlockAddress())
+                            block_count -= 1
+                            offset += 1
+                    else:
+                        for x in range(addr_block_size - lvl1_offset):
+                            addresses.appendleft(BlockAddress())
+                            block_count -= 1
+                            offset += 1
+                else:
+                    addr_block_data = bytes(self._log.read_block(inode.indirect_lvl1))
+                    print("READ-ADDR-BLOCK", addr_block_data)
+                    address_block = AddressBlock(addr_block_data, address_size)
+
+                    # iterate and read blocks of data from AddressBlock
+                    while True:
+                        # stop condition
+                        if offset == lvl1_max or block_count == 0:
+                            break;
+
+                        next_addr = address_block.get_address(offset - direct_count)
+                        print(next_addr.segmentid, next_addr.offset)
+                        addresses.appendleft(next_addr)
+
+                        block_count -= 1
+                        offset += 1
+
+            # iterate through addresses and read data
+            while True:
+                if len(addresses) == 0:
+                    break;
+                data.extend(self._log.read_block(addresses.pop()))
 
             # load data into byte array, then return requested bytes
-            for x in range(block_count):
-                data = self.read_data_block(inode, data, x, file_offset)
+#            for x in range(block_count):
+#                data = self.read_data_block(inode, data, x, initial_offset)
 
         # return bytes
         return bytes(data)
@@ -827,26 +895,27 @@ class FuseApi(FUSELL):
 
     def write_file(self, inode, buf, off):
 
-        # determine number of blocks to write
-        block_count = math.ceil(len(buf) / self._log.get_block_size())
-
         # get file_offset, off should be evenly divisible by block_size
         initial_offset = off // self._log.get_block_size()
 
         # write data to log, and get list of addresses for inode
         addresses = self.write_data_blocks(buf)
+        print("WRITE ADDRESSES")
+        for x in addresses:
+            print(" - ", x.segmentid, x.offset)
 
         # offset will increment as we work our way through the direct/indirect
         # address
         offset = initial_offset
         block_size = self._log.get_block_size()
         address_size = BlockAddress.get_address_size()
+        direct_count = inode.NUMBER_OF_DIRECT_BLOCKS
 
         # update inode direct addresses
-        if (offset < inode.NUMBER_OF_DIRECT_BLOCKS):
+        if (offset < direct_count):
             while True:
                 # loop until offset exceeds direct blocks or no addresses left
-                if offset == inode.NUMBER_OF_DIRECT_BLOCKS or \
+                if offset == direct_count or \
                    len(addresses) == 0:
                     break;
                 # write address and increment to next offset
@@ -854,19 +923,35 @@ class FuseApi(FUSELL):
                 offset += 1
 
         # check lvl1 offsets
-        if len(addresses) > 0 and \
-            offset < inode.get_max_indirect_offset(block_size,address_size,1):
-                print("extended lvl1 support here")
+        lvl1_max = inode.get_max_indirect_offset(block_size,address_size,1)
+        if len(addresses) > 0 and offset < lvl1_max:
 
-        # check lvl2 offsets
-        if len(addresses) > 0 and \
-            offset < inode.get_max_indirect_offset(block_size,address_size,2):
-                print("extended lvl2 support here")
+            address_blocks = []
 
-        # check lvl3 offsets
-        if len(addresses) > 0 and \
-            offset < inode.get_max_indirect_offset(block_size,address_size,3):
-                print("extended lvl3 support here")
+            # get starting indirect address block
+            if (inode.indirect_lvl1 == BlockAddress()):
+                print("NEW INDIRECT BLOCK")
+                addr_block_data = b'0'*block_size
+            else:
+                print("EXISTING INDIRECT BLOCK")
+                print(inode.indirect_lvl1.segmentid, inode.indirect_lvl1.offset)
+                addr_block_data = bytes(self._log.read_block(inode.indirect_lvl1))
+            print("WRITE-ADDR-BLOCK", addr_block_data)
+            address_blocks.append(AddressBlock(addr_block_data, address_size))
+ 
+            # write addresses to indirect layer
+            while True:
+
+                # loop until offset exceeds lvl1 max or no addresses left
+                if offset == lvl1_max or len(addresses) == 0:
+                    break;
+                # update address block and increment offset
+                address_blocks[0].set_address(addresses.pop(), offset - direct_count)
+                offset += 1
+
+            # write indirect lvl1 block, and update address pointer
+            inode.indirect_lvl1 = self._log.write_data_block(address_blocks[0].get_bytes())
+
 
         # 3. Increase Size attribute if file grew
         max_write_size = len(buf) + (initial_offset *

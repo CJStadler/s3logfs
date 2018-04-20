@@ -9,18 +9,18 @@ class AddressBlock:
         self.address_size = address_size
 
     def get_address(self, offset):
-        start = offset * address_size
-        end = start + address_size
+        start = offset * self.address_size
+        end = start + self.address_size
         address = BlockAddress(self.data[start:end])
         return address
 
-    def set_address(self, offset, address):
-        start = offset * address_size
-        end = start + address_size
+    def set_address(self, address, offset):
+        start = offset * self.address_size
+        end = start + self.address_size
         self.data = self.data[:start] + address.to_bytes() + self.data[end:]
 
     def get_max_offset(self):
-        return len(self.data) // address_size
+        return len(self.data) // self.address_size
 
-    def to_bytes():
-        return self.data
+    def get_bytes(self):
+        return bytes(self.data)
