@@ -836,6 +836,7 @@ class FuseApi(FUSELL):
                     if offset == direct_count or \
                        block_count == 0:
                         break;
+
                     # write address and increment to next offset
                     addresses.appendleft(inode.read_address(offset))
                     offset += 1
@@ -862,18 +863,19 @@ class FuseApi(FUSELL):
                             block_count -= 1
                             offset += 1
                 else:
+                    # load indirect_lvl1 
                     addr_block_data = bytes(self._log.read_block(inode.indirect_lvl1))
-                    print("READ-ADDR-BLOCK", addr_block_data)
+
                     address_block = AddressBlock(addr_block_data, address_size)
 
                     # iterate and read blocks of data from AddressBlock
                     while True:
+
                         # stop condition
                         if offset == lvl1_max or block_count == 0:
                             break;
 
                         next_addr = address_block.get_address(offset - direct_count)
-                        print(next_addr.segmentid, next_addr.offset)
                         addresses.appendleft(next_addr)
 
                         block_count -= 1
@@ -883,14 +885,15 @@ class FuseApi(FUSELL):
             while True:
                 if len(addresses) == 0:
                     break;
-                data.extend(self._log.read_block(addresses.pop()))
+                addr = addresses.pop()
+                data.extend(self._log.read_block(addr))
 
             # load data into byte array, then return requested bytes
 #            for x in range(block_count):
 #                data = self.read_data_block(inode, data, x, initial_offset)
 
         # return bytes
-        return bytes(data)
+        return bytes(data[0:size])
 
 
     def write_file(self, inode, buf, off):
@@ -900,9 +903,6 @@ class FuseApi(FUSELL):
 
         # write data to log, and get list of addresses for inode
         addresses = self.write_data_blocks(buf)
-        print("WRITE ADDRESSES")
-        for x in addresses:
-            print(" - ", x.segmentid, x.offset)
 
         # offset will increment as we work our way through the direct/indirect
         # address
@@ -930,13 +930,10 @@ class FuseApi(FUSELL):
 
             # get starting indirect address block
             if (inode.indirect_lvl1 == BlockAddress()):
-                print("NEW INDIRECT BLOCK")
-                addr_block_data = b'0'*block_size
+                addr_block_data = b'\0'*block_size
             else:
-                print("EXISTING INDIRECT BLOCK")
-                print(inode.indirect_lvl1.segmentid, inode.indirect_lvl1.offset)
                 addr_block_data = bytes(self._log.read_block(inode.indirect_lvl1))
-            print("WRITE-ADDR-BLOCK", addr_block_data)
+
             address_blocks.append(AddressBlock(addr_block_data, address_size))
  
             # write addresses to indirect layer
@@ -945,6 +942,7 @@ class FuseApi(FUSELL):
                 # loop until offset exceeds lvl1 max or no addresses left
                 if offset == lvl1_max or len(addresses) == 0:
                     break;
+
                 # update address block and increment offset
                 address_blocks[0].set_address(addresses.pop(), offset - direct_count)
                 offset += 1

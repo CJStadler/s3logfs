@@ -52,9 +52,9 @@ class INode:
         self.status_last_changed_at = now # st_ctime
         self.block_offset = 0
         self.block_addresses = self.NUMBER_OF_DIRECT_BLOCKS * [BlockAddress()]
-        self.indirect_lvl1 = BlockAddress(0,0)
-        self.indirect_lvl2 = BlockAddress(0,0)
-        self.indirect_lvl3 = BlockAddress(0,0)
+        self.indirect_lvl1 = BlockAddress()
+        self.indirect_lvl2 = BlockAddress()
+        self.indirect_lvl3 = BlockAddress()
         # for directory lookups, will be populated from data after inode is loaded
         self.children = {}
 
@@ -90,25 +90,17 @@ class INode:
             address_bytes = addresses_bytes[offset:offset + address_size]
             inode.block_addresses[i] = BlockAddress(address_bytes)
 
-        # indirect lvl1
-        offset = klass.NUMBER_OF_DIRECT_BLOCKS
-        address_bytes = addresses_bytes[offset:offset + address_size]
-        inode.indirect_lvl1 = BlockAddress(address_bytes)
-
-        # indirect lvl2
-        offset += 1
-        address_bytes = addresses_bytes[offset:offset + address_size]
-        inode.indirect_lvl2 = BlockAddress(address_bytes)
-
-        # indirect lvl3
-        offset += 1
-        offset = klass.NUMBER_OF_DIRECT_BLOCKS
-        address_bytes = addresses_bytes[offset:offset + address_size]
-        inode.indirect_lvl3 = BlockAddress(address_bytes)
+        # load indirect addresses
+        indirect_offset = klass.STRUCT.size + (address_size * klass.NUMBER_OF_DIRECT_BLOCKS)
+        indirect_bytes = data[indirect_offset:indirect_offset+(address_size*3)]
+        inode.indirect_lvl1 = BlockAddress(indirect_bytes[0:address_size])
+        inode.indirect_lvl2 = BlockAddress(indirect_bytes[address_size:address_size*2])
+        inode.indirect_lvl3 = BlockAddress(indirect_bytes[address_size*2:address_size*3])
 
         return inode
 
     def to_bytes(self):
+
         # pattern: QQQIIIIIddd
         struct_bytes = self.STRUCT.pack(
             self.inode_number,
@@ -132,6 +124,7 @@ class INode:
             address = self.block_addresses[i]
             data.extend(address.to_bytes())
 
+        # save indirect addresses
         data.extend(self.indirect_lvl1.to_bytes())
         data.extend(self.indirect_lvl2.to_bytes())
         data.extend(self.indirect_lvl3.to_bytes())
