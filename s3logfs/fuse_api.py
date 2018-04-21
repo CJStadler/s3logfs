@@ -877,9 +877,13 @@ class FuseApi(FUSELL):
 
                         next_addr = address_block.get_address(offset - direct_count)
                         addresses.appendleft(next_addr)
-
                         block_count -= 1
                         offset += 1
+
+            # check lvl1 offsets
+            lvl2_max = inode.get_max_indirect_offset(block_size,address_size,2)
+            if block_count > 0 and offset < lvl2_max:
+            
 
             # iterate through addresses and read data
             while True:
