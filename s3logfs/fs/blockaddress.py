@@ -5,6 +5,7 @@ ADDR_SEGMENT_BYTES = 6
 ADDR_OFFSET_BYTES = 2
 
 class BlockAddress:
+    STRUCT_SIZE = 8
 
     # BlockAddress constructor accepts either ...
     #  - bytearray (1 argument)

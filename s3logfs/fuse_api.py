@@ -9,11 +9,12 @@ from stat import *
 import math
 from time import time
 from fusell import FUSELL
+
 from botocore.exceptions import ClientError
 from collections import deque
 
 from .fs import CheckpointRegion
-from .backends import S3Bucket, DiskCache, MemoryCache
+from .backends import S3Bucket, DiskCache, MemoryCache, BackendError
 from .fs import Log, ReadOnlySegment
 from .fs import INode
 from .fs import BlockAddress
@@ -1295,7 +1296,7 @@ class FuseApi(FUSELL):
                 segment_bytes = self._bucket.get_segment(current_segment_id)
                 self._update_imap_from_segment(
                     current_segment_id, segment_bytes)
-            except ClientError:
+            except BackendError:
                 last_segment_exists = False
 
             last_segment_id = current_segment_id

@@ -10,21 +10,17 @@ class LargeFile(object):
 		assert(0 < self.NUMBER_OF_DIRECT_BLOCKS)
 		assert(self.POINTER_SIZE < self.BLOCK_SIZE)
 		self.INDIRECT_BLOCKS = self.NUMBER_OF_BLOCKS - self.NUMBER_OF_DIRECT_BLOCKS
-		self.pointersPerBlock = self.BLOCK_SIZE/self.POINTER_SIZE
+		self.pointersPerBlock = self.BLOCK_SIZE//self.POINTER_SIZE
 		self.directBlocksSize = self.NUMBER_OF_DIRECT_BLOCKS*self.BLOCK_SIZE 
 
 	def printAll(self):
-		print "hello"
-		print self.NUMBER_OF_BLOCKS
+		print (self.NUMBER_OF_BLOCKS)
 
 	def findStartingPosIndirect(self, startPos, maxLevel, possibleSize):
 
-		possibleSize = possibleSize/self.pointersPerBlock
-		index = startPos / possibleSize
+		possibleSize = possibleSize//self.pointersPerBlock
+		index = startPos // possibleSize
 		offset = startPos - index * possibleSize
-		# print "startPos: " + str(startPos)
-		# print "index: " + str(index)
-		# print "offset: " + str(offset)
 		path = [index]
 
 		if(maxLevel>0):
@@ -34,21 +30,19 @@ class LargeFile(object):
 
 	def findStartingPos(self, startPos):
 		if(startPos < self.directBlocksSize):
-			return [startPos/self.BLOCK_SIZE, startPos%self.BLOCK_SIZE]
+			return [startPos//self.BLOCK_SIZE, startPos%self.BLOCK_SIZE]
 		startPos -= self.directBlocksSize
 
 		possibleSize = self.BLOCK_SIZE
 		for i in range(self.INDIRECT_BLOCKS):
 			possibleSize = possibleSize * self.pointersPerBlock 
-			print str(startPos) + " " + str(possibleSize)
 			blockIndex = self.NUMBER_OF_DIRECT_BLOCKS + i;
 			if startPos < possibleSize:
-				print ""
 				return [blockIndex] + self.findStartingPosIndirect(startPos, i, possibleSize)
 			else :
 				startPos -= possibleSize
 
-		print "error"
+		print ("error")
 
 	def findAllPos(self, startPos, size):
 		paths = []
@@ -59,7 +53,6 @@ class LargeFile(object):
 			path = self.findNextPos(path)
 			paths.append(path)
 			size -= (self.BLOCK_SIZE - path[len(path)-1])
-			# return paths
 		return paths
 
 	def findPosition(self, path):
@@ -81,19 +74,5 @@ class LargeFile(object):
 		return self.findStartingPos(position)
 
 x = LargeFile()
-# print x.findAllPos(101, 100000)
-print x.findAllPos(300+512*130, 100000)
-
-# y = x.findAllPos(512, 1)
-# print x.findPosition(y)
-
-# y = x.findAllPos(10001, 1)
-# print x.findPosition(y)
-
-# y = x.findAllPos(123478, 1)
-# print x.findPosition(y)
-
-# y = x.findAllPos(10000001, 1)
-# print x.findPosition(y)
-
-# y = x.findAllPos(10000000001, 1)
+# print (x.findAllPos(101, 100000))
+print (x.findAllPos(300+512*130, 10000))

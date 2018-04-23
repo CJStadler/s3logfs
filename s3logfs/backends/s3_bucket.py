@@ -1,6 +1,8 @@
+from .backend_error import BackendError
+
 from contextlib import closing
 from boto3 import client
-
+from botocore.exceptions import ClientError
 
 class S3Bucket:
     '''
@@ -41,7 +43,7 @@ class S3Bucket:
 
     def flush(self):
         '''
-        This class writes to S3 synchronously, so there is nothing to flush. 
+        This class writes to S3 synchronously, so there is nothing to flush.
         '''
         pass
 
@@ -57,10 +59,14 @@ class S3Bucket:
         '''
         TODO: Handle errors
         '''
-        response = self._client.get_object(
-            Bucket=self._bucket_name,
-            Key=key
-        )
+        try:
+            response = self._client.get_object(
+                Bucket=self._bucket_name,
+                Key=key
+            )
+        except ClientError as e:
+            raise BackendError()
+
         with closing(response['Body']) as body:
             return body.read()
 
