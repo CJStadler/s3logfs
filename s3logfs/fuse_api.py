@@ -107,7 +107,7 @@ class FuseApi(FUSELL):
         #     in the 2nd terminal the directory will no longer show up. Once you
         #     leave the directory on the 1st terminal, forget is called and
         #     deletes the inode
-        del self._CR.inode_map[ino]
+#        del self._CR.inode_map[ino]
 
         # CHECKPOINT
         self._checkpoint_if_necessary()
@@ -775,6 +775,7 @@ class FuseApi(FUSELL):
             # get inode data & set size/block_count attributes
             data = inode.children_to_bytes()
             number_blocks = math.ceil(len(data)/self._log.get_block_size())
+
             # directory size is always an increment of system block_size (page_size)
             inode.size = number_blocks * self._log.get_block_size()
 
@@ -837,6 +838,10 @@ class FuseApi(FUSELL):
 
         # if len(offsets) > 0 , then there are more layers to process
         if len(offsets) > 0:
+
+            ## BCH - I expet the issue with lvl3 offsets is within 
+            ##       the read logic below, and how the read_count
+            ##       is calculated
 
             # calcluate number of block units per address at this level 
             block_units = (block_size // address_size)**len(offsets)
