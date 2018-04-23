@@ -10,12 +10,17 @@ import math
 from time import time
 from fusell import FUSELL
 
+from botocore.exceptions import ClientError
+from collections import deque
+
 from .fs import CheckpointRegion
 from .backends import S3Bucket, DiskCache, MemoryCache, BackendError
 from .fs import Log, ReadOnlySegment
 from .fs import INode
 from .fs import BlockAddress
+from .fs import AddressBlock
 
+CONSOLE_OUTPUT = True
 
 class FuseApi(FUSELL):
 
@@ -41,7 +46,8 @@ class FuseApi(FUSELL):
     ### FUSE METHODS ###
 
     def destroy(self, userdata):
-        print('FS-DESTROY:', userdata)
+        if CONSOLE_OUTPUT:
+            print('FS-DESTROY:', userdata)
         """Clean up filesystem
 
         There's no reply to this method
@@ -50,7 +56,8 @@ class FuseApi(FUSELL):
         self._save_checkpoint()
 
     def lookup(self, req, parent, name):
-        print("FS:LOOKUP", req, parent, name)
+        if CONSOLE_OUTPUT:
+            print("FS-LOOKUP", req, parent, name)
 
         # verify parent inode exists in inode_map lookup
         if self._CR.inode_exists(parent):
@@ -87,7 +94,8 @@ class FuseApi(FUSELL):
             self.reply_err(req, errno.ENOENT)
 
     def forget(self, req, ino, nlookup):
-        print('FS-FORGET:', req, ino, nlookup)
+        if CONSOLE_OUTPUT:
+            print('FS-FORGET:', req, ino, nlookup)
 
         # removes inode form inode_map
         # this is done here because the inode must be
@@ -107,7 +115,8 @@ class FuseApi(FUSELL):
         self.reply_none(req)
 
     def getattr(self, req, ino, fi):
-        print("FS-GETATTR", req, ino, fi)
+        if CONSOLE_OUTPUT:
+            print("FS-GETATTR", req, ino, fi)
 
         # verify inode exists
         if self._CR.inode_exists(ino):
@@ -129,7 +138,8 @@ class FuseApi(FUSELL):
 
 
     def setattr(self, req, ino, attr, to_set, fi):
-        print('FS-SETATTR:', req, ino, attr, to_set, fi)
+        if CONSOLE_OUTPUT:
+            print('FS-SETATTR:', req, ino, attr, to_set, fi)
 
         # verify inode exists
         if self._CR.inode_exists(ino):
@@ -190,7 +200,8 @@ class FuseApi(FUSELL):
 
 
     def mknod(self, req, parent, name, mode, rdev):
-        print('FS-MKNOD:', req, parent, name,  mode, rdev)
+        if CONSOLE_OUTPUT:
+            print('FS-MKNOD:', req, parent, name,  mode, rdev)
 
         # verify inode exists
         if self._CR.inode_exists(parent):
@@ -260,7 +271,8 @@ class FuseApi(FUSELL):
 
 
     def mkdir(self, req, parent, name, mode):
-        print('FS-MKDIR:', parent, name, mode)
+        if CONSOLE_OUTPUT:
+            print('FS-MKDIR:', parent, name, mode)
 
         # verify inode exists
         if self._CR.inode_exists(parent):
@@ -333,7 +345,8 @@ class FuseApi(FUSELL):
             self.reply_err(req, errno.EIO)
 
     def unlink(self, req, parent, name):
-        print('FS-UNLINK:', req, parent, name)
+        if CONSOLE_OUTPUT:
+            print('FS-UNLINK:', req, parent, name)
 
         # verify inode exists
         if self._CR.inode_exists(parent):
@@ -366,7 +379,8 @@ class FuseApi(FUSELL):
             self.reply_err(req, errno.EIO)
 
     def rmdir(self, req, parent, name):
-        print("FS-RMDIR:", req, parent, name)
+        if CONSOLE_OUTPUT:
+            print("FS-RMDIR:", req, parent, name)
 
         # verify inode exists
         if self._CR.inode_exists(parent):
@@ -394,7 +408,8 @@ class FuseApi(FUSELL):
             self.reply_err(req, errno.EIO)
 
     def rename(self, req, parent, name, newparent, newname):
-        print('FS-RENAME:', req, parent, name, newparent, newname)
+        if CONSOLE_OUTPUT:
+            print('FS-RENAME:', req, parent, name, newparent, newname)
 
         # load current directory
         current_directory = self.load_directory(parent)
@@ -437,7 +452,8 @@ class FuseApi(FUSELL):
 
 
     def link(self, req, ino, newparent, newname):
-        print('FS-LINK:', req, ino, newparent, newname)
+        if CONSOLE_OUTPUT:
+            print('FS-LINK:', req, ino, newparent, newname)
 
         # 1. LOAD DIRECTORY
         directory = self.load_directory(newparent)
@@ -479,7 +495,8 @@ class FuseApi(FUSELL):
             return dict()
 
     def open(self, req, ino, fi):
-        print('FS-OPEN:', req, ino)
+        if CONSOLE_OUTPUT:
+            print('FS-OPEN:', req, ino)
 
         # verify inode exists, return open reply or error
         if self._CR.inode_exists(ino):
@@ -499,7 +516,8 @@ class FuseApi(FUSELL):
             self.reply_err(req, errno.EIO)
 
     def read(self, req, ino, size, off, fi):
-        print('read:', req, ino, size, off)
+        if CONSOLE_OUTPUT:
+            print('FS-READ:', req, ino, size, off)
 
         # verify inode exists
         if self._CR.inode_exists(ino):
@@ -522,7 +540,8 @@ class FuseApi(FUSELL):
             self.reply_err(req, errno.ENOENT)
 
     def write(self, req, ino, buf, off, fi):
-        print('FS-WRITE:', req, ino, len(buf), off)
+        if CONSOLE_OUTPUT:
+            print('FS-WRITE:', req, ino, len(buf), off)
 
         # verify inode exists
         if self._CR.inode_exists(ino):
@@ -544,7 +563,8 @@ class FuseApi(FUSELL):
             self.reply_err(req, errno.ENOENT)
 
     def readdir(self, req, ino, size, off, fi):
-        print('FS-READDIR:', req, ino, size, off, fi)
+        if CONSOLE_OUTPUT:
+            print('FS-READDIR:', req, ino, size, off, fi)
 
         # 1. LOAD DIRECTORY INODE
         directory = self.load_directory(ino)
@@ -568,13 +588,15 @@ class FuseApi(FUSELL):
                 child_attr = child_inode.get_attr()
                 # add inode/attr to entries
                 entries.append((child_name, child_attr))
-            except:
-                print("INode(", int(v), "=", k, ") not found!")
+            except KeyError:
+                print("INode (", inode_id, ") not found in inode_map!")
+                self.reply_err(req, errno.EIO)
 
         self.reply_readdir(req, size, off, entries)
 
     def symlink(self, req, link, parent, name):
-        print('symlink:', req, link, parent, name)
+        if CONSOLE_OUTPUT:
+            print('FS-SYMLINK:', req, link, parent, name)
 
         # create symlink inode
         link_node = INode()
@@ -626,7 +648,8 @@ class FuseApi(FUSELL):
 
 
     def readlink(self, req, ino):
-        print('readlink:', req, ino)
+        if CONSOLE_OUTPUT:
+            print('FS-READLINK::', req, ino)
 
         # load inode
         inode = self.load_inode(ino)
@@ -643,7 +666,8 @@ class FuseApi(FUSELL):
     # ************
 
     def release(self, req, ino, fi):
-        print('FS-RELEASE:', req, ino, fi)
+        if CONSOLE_OUTPUT:
+            print('FS-RELEASE:', req, ino, fi)
 
         # for the type of file system we have , we won't need to implement
         # this function beyond checking if a checkpoint is necessary.
@@ -654,13 +678,15 @@ class FuseApi(FUSELL):
         self.reply_err(req, 0)
 
     def flush(self, req, ino, fi):
-        print('flush:', req, ino, fi)
+        if CONSOLE_OUTPUT:
+            print('FS-FLUSH:', req, ino, fi)
 
         # error because its not implemented
         self.reply_err(req, errno.ENOSYS)
 
     def statfs(self, req, ino):
-        print('statfs:', req, ino)
+        if CONSOLE_OUTPUT:
+            print('statfs:', req, ino)
 
         stat_fs_info = dict()
         stat_fs_info["f_bavail"] = 0
@@ -681,42 +707,32 @@ class FuseApi(FUSELL):
         self.reply_err(req, errno.ENOSYS)
 
     def listxattr(self, req, ino, size):
-        print('listxattr:', req, ino, size)
+        if CONSOLE_OUTPUT:
+            print('listxattr:', req, ino, size)
 
         # error because its not implemented
         self.reply_err(req, errno.ENOTSUP)
 
     def setxattr(self, req, ino, name, value, size, flags):
-        print('setxattr:', req, ino, name, value, size, flags)
+        if CONSOLE_OUTPUT:
+            print('setxattr:', req, ino, name, value, size, flags)
 
         # error because its not implemented
         self.reply_err(req, errno.ENOTSUP)
 
     def getxattr(self, req, ino, name, size):
-        print('getxattr:', req, ino, name, size)
+        if CONSOLE_OUTPUT:
+            print('getxattr:', req, ino, name, size)
 
         # error because its not implemented
         self.reply_err(req, errno.ENOTSUP)
 
     def removexattr(self, req, ino, name):
-        print('removexattr:', req, ino, name)
+        if CONSOLE_OUTPUT:
+            print('removexattr:', req, ino, name)
 
         # error because its not implemented
         self.reply_err(req, errno.ENOSYS)
-
-
-# following functions may not be required, but if we have time we can implement
-# them for more functionality
-
-# def opendir(self, req, ino, fi):
-##        print('opendir:', req, ino, fi)
-# error because its not implemented
-# self.reply_err(req,errno.ENOSYS)
-
-# def releasedir(self, req, ino, fi):
-##        print('releasedir:', req, ino, fi)
-# error because its not implemented
-# self.reply_err(req,errno.ENOSYS)
 
     def fsync(self, req, ino, datasync, fi):
         """Synchronize file contents
@@ -726,11 +742,6 @@ class FuseApi(FUSELL):
         """
 
         self._log.flush()
-
-# def fsyncdir(self, req, ino, datasync, fi):
-##        print('fsyncdir:', req, ino, datasync, fi)
-# return no error
-# self.reply_err(req,0)
 
 
 ### Helper methods ###
@@ -780,6 +791,7 @@ class FuseApi(FUSELL):
         # get inode data & set size/block_count attributes
         data = link.encode('utf-8')
         number_blocks = math.ceil(len(data)/self._log.get_block_size())
+
         # directory size is always an increment of system block_size (page_size)
         inode.size = len(data)
 
@@ -800,42 +812,412 @@ class FuseApi(FUSELL):
         
         return link
 
+    # read_indirect
+    def read_indirect(self, block_addresses, offsets, block_count):
+
+        # just to make the code cleaner 
+        block_size = self._log.get_block_size()
+        address_size = BlockAddress.get_address_size()
+
+        # load data at block_addresses into AddressBlock object
+        indirect_data = bytearray()
+        for addr in block_addresses:
+
+            # if address is 0,0 load a block of zeros, otherwise load from log
+            if addr == BlockAddress():
+                indirect_data.extend(b'\00' * block_size)
+            else:
+                indirect_data.extend(self._log.read_block(addr))
+
+        indirect_ab = AddressBlock(bytes(indirect_data))
+
+        # set start offest for this layer, and remove it from offests
+        # this decrementation will stop the recursive loop
+        start_offset = offsets.pop()
+
+        # if len(offsets) > 0 , then there are more layers to process
+        if len(offsets) > 0:
+
+            # calcluate number of block units per address at this level 
+            block_units = (block_size // address_size)**len(offsets)
+
+            next_offset = offsets[len(offsets)-1]
+
+            # calculate number of addresess to read, limited to max 
+            read_count = math.ceil((next_offset + block_count) / block_units)
+            if read_count > (indirect_ab.get_max_offset() - start_offset):
+                read_count = indirect_ab.get_max_offset() - start_offset
+
+            # get block_addresses from indirect_data for next layer
+            next_block_addresses = deque()
+            for x in range(read_count):
+                addr = indirect_ab.get_address(start_offset + x)
+                next_block_addresses.append(addr)
+
+            # call read_indirect, just return results which will be data addresses
+            return self.read_indirect(next_block_addresses, offsets, block_count)
+
+        else:
+
+            # read block_count addresses from offset in indirect_ab
+            next_block_addresses = deque()
+            for x in range(block_count):
+                addr = indirect_ab.get_address(start_offset + x)
+                next_block_addresses.append(addr)                
+
+            return next_block_addresses
+
 
     # read_file - will return data from a file, based on the size an offset
-    def read_file(self, inode, size, offset):
+    def read_file(self, inode, size, off):
 
         data = bytearray()
 
         if size>0:
 
-            # determine number of blocks of data to read based on requetsed size
+            # determine number of blocks of data to read based on requested size
             block_count = math.ceil(size / self._log.get_block_size())
 
             # define file_offset , offset should be divisible by our block_size
-            file_offset = offset // self._log.get_block_size()
+            initial_offset = off // self._log.get_block_size()
 
-            # load data into byte array, then return requested bytes
-            for x in range(block_count):
-                data = self.read_data_block(inode, data, x, file_offset)
+            # get list of addresses that need to be read
+            addresses = deque()
+
+            # offset will increment as we work our way through the direct/indirect
+            # address
+            offset = initial_offset
+            block_size = self._log.get_block_size()
+            address_size = BlockAddress.get_address_size()
+            direct_count = inode.NUMBER_OF_DIRECT_BLOCKS
+            addr_block_count = block_size // address_size
+
+            # iterate through direct blocks obtaining addresses to read
+            if (offset < direct_count):
+                while True:
+                    # loop until offset exceeds direct blocks or no addresses left
+                    if offset == direct_count or \
+                       block_count == 0:
+                        break;
+
+                    # write address and increment to next offset
+                    addresses.appendleft(inode.read_address(offset))
+                    offset += 1
+                    block_count -= 1
+
+            # check lvl1 offsets
+            lvl1_max = inode.get_max_indirect_offset(block_size,address_size,1)
+            if block_count > 0 and offset < lvl1_max:
+
+                # get offsets
+                indirect_offsets = inode.get_indirect_offsets(offset, block_size)
+ 
+                # identify block_addresses
+                block_addresses = deque()
+                block_addresses.append(inode.indirect_lvl1)
+
+                # get sublist of addreses for this level if its going to spill
+                # into next level, need to maintain orignal addresses list for next level
+                target_count = block_count
+                if (block_count + offset) > lvl1_max:
+
+                    target_count = lvl1_max - offset
+                    lvl1_addresses = self.read_indirect(block_addresses, indirect_offsets, target_count)
+
+                else:
+
+                    # calculate block_addresses and offsets
+                    lvl1_addresses = self.read_indirect(block_addresses, indirect_offsets, target_count)
+
+                # increment offset
+                offset += target_count
+                block_count -= target_count
+
+                # add lvl1_addresses
+                for x in range(len(lvl1_addresses)):
+                    addresses.appendleft(lvl1_addresses[x])
+
+            # check lvl2 offsets
+            lvl2_max = inode.get_max_indirect_offset(block_size,address_size,2)
+            if block_count > 0 and offset < lvl2_max:
+
+                 # get offsets
+                indirect_offsets = inode.get_indirect_offsets(offset, block_size)
+ 
+                # identify block_addresses
+                block_addresses = deque()
+                block_addresses.append(inode.indirect_lvl2)
+
+                # get sublist of addreses for this level if its going to spill
+                # into next level, need to maintain orignal addresses list for next level
+                target_count = block_count
+                if (block_count + offset) > lvl2_max:
+
+                    target_count = lvl2_max - offset
+                    lvl2_addresses = self.read_indirect(block_addresses, indirect_offsets, target_count)
+
+                else:
+
+                    # calculate block_addresses and offsets
+                    lvl2_addresses = self.read_indirect(block_addresses, indirect_offsets, target_count)
+
+                # increment offset
+                offset += target_count
+                block_count -= target_count
+
+                # add lvl1_addresses
+                for x in range(len(lvl2_addresses)):
+                    addresses.appendleft(lvl2_addresses[x])
+
+            # check lvl3 offsets
+            lvl3_max = inode.get_max_indirect_offset(block_size,address_size,3)
+            if block_count > 0 and offset < lvl3_max:
+
+                # get offsets
+                indirect_offsets = inode.get_indirect_offsets(offset, block_size)
+
+                # identify block_addresses
+                block_addresses = deque()
+                block_addresses.append(inode.indirect_lvl3)
+
+                # get sublist of addreses for this level if its going to spill
+                # into next level, need to maintain orignal addresses list for next level
+                target_count = block_count
+                if (block_count + offset) > lvl3_max:
+
+                    target_count = lvl3_max - offset
+                    lvl3_addresses = self.read_indirect(block_addresses, indirect_offsets, target_count)
+
+                else:
+
+                    # calculate block_addresses and offsets
+                    lvl3_addresses = self.read_indirect(block_addresses, indirect_offsets, target_count)
+
+                # increment offset
+                offset += target_count
+                block_count -= target_count
+
+                # add lvl1_addresses
+                for x in range(len(lvl3_addresses)):
+                    addresses.appendleft(lvl3_addresses[x])
+
+            # iterate through addresses and read data
+            while True:
+                if len(addresses) == 0:
+                    break;
+                addr = addresses.pop()
+                data.extend(self._log.read_block(addr))
 
         # return bytes
-        return bytes(data)
+        return bytes(data[0:size])
 
+    # write_indirect
+    #
+    #     This recursive method will read into the indirect address layer, 
+    #     update a list of addresses at a specific offset, and then as it backs 
+    #     out it will write the updated address pointer blocks and then update 
+    #     the previous layers addresses
+    #
+    #         block_addresses (READ)
+    #             list of BlockAddresses to load into a byte array and update at
+    #             the next level
+    #         offsets
+    #             reverse list of offsets for each layer (Ex 10, 115, 63 would 
+    #             be offset 63 at lvl1, offset 115 at lvl2, offset 10 at lvl3)
+    #         addresses (WRITE)
+    #             reverse list of addresses that need to be writen
+    def write_indirect(self, block_addresses, offsets, addresses):
+
+        # just to make the code cleaner 
+        block_size = self._log.get_block_size()
+        address_size = BlockAddress.get_address_size()
+
+        # load data at block_addresses into AddressBlock object
+        indirect_data = bytearray()
+
+        for addr in block_addresses:
+
+            # if address is 0,0 load a block of zeros, otherwise load from log
+            if addr == BlockAddress():
+                indirect_data.extend(b'\00' * block_size)
+            else:
+                indirect_data.extend(self._log.read_block(addr))
+
+        indirect_ab = AddressBlock(bytes(indirect_data))
+
+        # set start offest for this layer, and remove it from offests
+        # this decrementation will stop the recursive loop
+        start_offset = offsets.pop()
+
+        # if len(offsets) > 0 , then there are more layers to process
+        if len(offsets) > 0:
+
+            # calcluate number of block units per address at this level 
+            block_units = (block_size // address_size)**len(offsets)
+
+            # calculate number of addresess to read, limited to max 
+            read_count = math.ceil((start_offset + len(addresses)) / block_units)
+            if read_count > (indirect_ab.get_max_offset() - start_offset):
+                read_count = indirect_ab.get_max_offset() - start_offset
+
+            # get block_addresses from indirect_data for next layer
+            next_block_addresses = deque()
+            for x in range(read_count):
+                addr = indirect_ab.get_address(start_offset + x)
+                next_block_addresses.append(addr)
+
+            # call write_indirect, update addresses
+            addresses = self.write_indirect(next_block_addresses, offsets, addresses)
+
+        # write addresses to indirect_data at start_offset
+        write_count = len(addresses)
+        for x in range(write_count):
+            addr = addresses.pop()
+            indirect_ab.set_address(addr, start_offset + x)
+
+        # write indirect_data to log block by block saving a list of addresses to return
+        # addreses in this list must be added with appendleft for reverse order
+        addresses = self.write_data_blocks(indirect_ab.get_bytes())
+
+        # return addresses
+        return addresses
 
     def write_file(self, inode, buf, off):
 
-        # determine number of blocks to write
-        block_count = math.ceil(len(buf) / self._log.get_block_size())
-
         # get file_offset, off should be evenly divisible by block_size
-        file_offset = off // self._log.get_block_size()
+        initial_offset = off // self._log.get_block_size()
 
-        # furthest write, will be used to set new size
-        for x in range(block_count):
-            inode = self.write_data_block(inode, buf, x, file_offset)
+        # write data to log, and get list of addresses for inode
+        addresses = self.write_data_blocks(buf)
+
+        # offset will increment as we work our way through the direct/indirect
+        # address
+        offset = initial_offset
+        block_size = self._log.get_block_size()
+        address_size = BlockAddress.get_address_size()
+        direct_count = inode.NUMBER_OF_DIRECT_BLOCKS
+
+        # update inode direct addresses
+        if (offset < direct_count):
+            while True:
+                # loop until offset exceeds direct blocks or no addresses left
+                if offset == direct_count or \
+                   len(addresses) == 0:
+                    break;
+                # write address and increment to next offset
+                inode.write_address(addresses.pop(), offset)
+                offset += 1
+
+        # check lvl1 offsets
+        lvl1_max = inode.get_max_indirect_offset(block_size,address_size,1)
+        if len(addresses) > 0 and offset < lvl1_max:
+        
+            # get offsets
+            indirect_offsets = inode.get_indirect_offsets(offset, block_size)
+
+            # identify block_addresses
+            block_addresses = deque()
+            block_addresses.append(inode.indirect_lvl1)
+
+            # get sublist of addreses for this level if its going to spill
+            # into next level, need to maintain orignal addresses list for next level
+            if (len(addresses) + offset) > lvl1_max:
+                target_addresses = deque()
+                for x in range( lvl1_max - offset ):
+                    target_addresses.appendleft(addresses.pop())
+
+                # get address count to increase offset after we write indirects
+                addr_count = len(target_addresses)
+
+                new_indirect_lvl1 = self.write_indirect(block_addresses, indirect_offsets, target_addresses)
+
+            else:
+
+                # get address count to increase offset after we write indirects
+                addr_count = len(addresses)
+
+                # calculate block_addresses and offsets
+                new_indirect_lvl1 = self.write_indirect(block_addresses, indirect_offsets, addresses)
+
+            # increment offset
+            offset += addr_count
+
+            # set new indirect pointers
+            inode.indirect_lvl1 = new_indirect_lvl1.pop()
+
+        # check lvl2 offsets
+        lvl2_max = inode.get_max_indirect_offset(block_size,address_size,2)
+        if len(addresses) > 0 and offset < lvl2_max:
+
+            # get offsets
+            indirect_offsets = inode.get_indirect_offsets(offset, block_size)
+
+            # identify block_addresses
+            block_addresses = deque()
+            block_addresses.append(inode.indirect_lvl2)
+
+            # get sublist of addreses for this level if its going to spill
+            # into next level, need to maintain orignal addresses list for next level
+            if (len(addresses) + offset) > lvl2_max:
+                target_addresses = deque()
+                for x in range( lvl2_max - offset ):
+                    target_addresses.appendleft(addresses.pop())
+
+                # get address count to increase offset after we write indirects
+                addr_count = len(target_addresses)
+
+                new_indirect_lvl2 = self.write_indirect(block_addresses, indirect_offsets, target_addresses)
+            else:
+
+                # get address count to increase offset after we write indirects
+                addr_count = len(addresses)
+
+                # calculate block_addresses and offsets
+                new_indirect_lvl2 = self.write_indirect(block_addresses, indirect_offsets, addresses)
+
+            # increment offset
+            offset += addr_count
+
+            # set new indirect pointers
+            inode.indirect_lvl2 = new_indirect_lvl2.pop()
+
+        # check lvl1 offsets
+        lvl3_max = inode.get_max_indirect_offset(block_size,address_size,3)
+        if len(addresses) > 0 and offset < lvl3_max:
+
+            # get offsets
+            indirect_offsets = inode.get_indirect_offsets(offset, block_size)
+            # identify block_addresses
+            block_addresses = deque()
+            block_addresses.append(inode.indirect_lvl3)
+
+            # get sublist of addreses for this level if its going to spill
+            # into next level, need to maintain orignal addresses list for next level
+            if (len(addresses) + offset) > lvl3_max:
+                target_addresses = deque()
+                for x in range( lvl3_max - offset ):
+                    target_addresses.appendleft(addresses.pop())
+
+                # get address count to increase offset after we write indirects
+                addr_count = len(target_addresses)
+
+                new_indirect_lvl3 = self.write_indirect(block_addresses, indirect_offsets, target_addresses)
+            else:
+
+                # get address count to increase offset after we write indirects
+                addr_count = len(addresses)
+
+                # calculate block_addresses and offsets
+                new_indirect_lvl3 = self.write_indirect(block_addresses, indirect_offsets, addresses)
+
+            # increment offset
+            offset += addr_count
+
+            # set new indirect pointers
+            inode.indirect_lvl3 = new_indirect_lvl3.pop()
 
         # 3. Increase Size attribute if file grew
-        max_write_size = len(buf) + (file_offset *
+        max_write_size = len(buf) + (initial_offset *
                                      self._log.get_block_size())
         if (max_write_size > inode.size):
             inode.size = max_write_size
@@ -848,7 +1230,6 @@ class FuseApi(FUSELL):
         # 3. Write Inode to log
         self.write_inode(inode)
  
-
     def write_inode(self, inode):
 
         # write inode to log
@@ -865,6 +1246,31 @@ class FuseApi(FUSELL):
         address = self._log.write_data_block(block)
         inode.write_address(address, file_offset + x)
         return inode
+
+    # method will write a number of blocks of data, and return a 
+    # list of addresses that will need to be updated in the 
+    # corresponding inode
+    def write_data_blocks(self, buf):
+
+        # addresses list, using deque for appendleft / pop O(1) performance
+        addresses = deque()
+
+        # obtain number of blocks we will need to write
+        write_count = math.ceil(len(buf) / self._log.get_block_size())
+        # iterate and write
+
+        for x in range(write_count):
+
+            # slice block of data
+            start = x * self._log.get_block_size()
+            end = (x + 1 ) * self._log.get_block_size()
+            block = buf[start:end]
+            # write block and append address
+            addresses.appendleft(self._log.write_data_block(block))
+
+        # return addresses
+        return addresses
+
 
     def read_data_block(self, inode, data, x, file_offset=0):
         block_address = inode.read_address(file_offset + x)
@@ -885,7 +1291,6 @@ class FuseApi(FUSELL):
         except KeyError:
 
             print("INode (", inode_id, ") not found in inode_map!")
-            self.reply_err(req, errno.EIO)
 
     def _checkpoint_if_necessary(self):
         current_time = int(time())
