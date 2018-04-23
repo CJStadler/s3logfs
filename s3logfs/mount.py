@@ -14,16 +14,16 @@ def main():
     parser.add_argument('bucket',
                         help='The name of the S3 bucket containing the filesystem.')
     parser.add_argument('-m', '--memcache', dest='memory_cache_size', type=int, default=16,
-                        help='The maximum number of segments to hold in the in-memory cache')
+                        help='The maximum number of segments to hold in the in-memory cache (Default=16)')
     parser.add_argument('-d', '--diskcache', dest='disk_cache_size', type=int, default=64,
-                        help='The maximum number of segments to hold in the on-disk cache')
+                        help='The maximum number of segments to hold in the on-disk cache (Default=64)')
     parser.add_argument('-w', '--writequeue', dest='write_queue_size', type=int, default=8,
                         help='The maximum number of segments waiting to be written '
-                        'at a time. When the queue is full all new requests will wait.')
+                        'at a time. When the queue is full all new requests will wait. (Default=8)')
     parser.add_argument('-t', '--threads', dest='thread_pool_size', type=int, default=4,
-                        help='The number of threads in the write request pool.')
+                        help='The number of threads in the write request pool. (Default=4)')
     parser.add_argument('-c', '--checkpoint', dest='checkpoint_frequency', type=int, default=60,
-                        help='The number of seconds between checkpoints.')
+                        help='The number of seconds between checkpoints. (Default=60)')
     args = parser.parse_args()
 
     bucket_name = args.bucket

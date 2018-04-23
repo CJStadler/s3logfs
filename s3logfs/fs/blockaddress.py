@@ -27,7 +27,6 @@ class BlockAddress:
         # invalid number of arguments
         else:
             # *** need to replace this with how we will handle errors ***
-            print("ERROR")
             return NotImplemented
 
     def __eq__(self, other):
@@ -37,6 +36,9 @@ class BlockAddress:
 
     def __hash__(self):
         return hash((self.segmentid, self.offset))
+
+    def __str__(self):
+        return "BlockAddress(" + str(self.segmentid) + "," + str(self.offset) + ")"
 
     # returns BlockAddress as a list of bytes
     def to_bytes(self):

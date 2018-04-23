@@ -14,9 +14,9 @@ def main():
     parser.add_argument('bucket_name',
                         help='The name of the S3 bucket containing the filesystem.')
     parser.add_argument('-b', '--blocksize', dest='block_size', type=int, default=4096,
-                        help='The size of each block, in bytes.')
+                        help='The size of each block, in bytes. (Default=4096)')
     parser.add_argument('-s', '--segmentsize', dest='blocks_per_segment', type=int, default=512,
-                        help='The number of blocks per segment.')
+                        help='The number of blocks per segment. (Deafult=512)')
     parser.add_argument('-r', '--region', default=None,
                         help='The region to create the bucket in (see S3 documentation for options).')
     args = parser.parse_args()

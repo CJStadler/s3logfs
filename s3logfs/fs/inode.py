@@ -215,7 +215,7 @@ class INode:
     # this will obtain the offsets at each level of reads to get to a data block
     # it will return an equal number of elements to the number of reads deep
     # Ex: offset 1,000,000, block_size 4096, address_size 8 will be 2,416,48
-    def get_indirect_offsets(self, offset, block_size, address_size):
+    def get_indirect_offsets(self, offset, block_size):
 
         # calculate addresses per block
         address_per_block = block_size // BlockAddress.get_address_size()
@@ -226,43 +226,43 @@ class INode:
         lvl3_max = lvl2_max + address_per_block**3
 
         # define empty offsets list
-        offsets = []
+        offsets = deque()
 
         if offset < lvl1_max:
 
             # calculate lvl1 offset
             adj_offset = offset - self.NUMBER_OF_DIRECT_BLOCKS
             lvl1 = adj_offset
-            offsets.append(lvl1)
+            offsets.appendleft(lvl1)
 
         elif offset < lvl2_max:
 
             # calculate lvl2 offset
             adj_offset = offset - lvl1_max
             lvl2 = adj_offset // address_per_block
-            offsets.append(lvl2)
+            offsets.appendleft(lvl2)
 
             # calculate lvl1 offset
             adj_offset = adj_offset - (address_per_block * lvl2)
             lvl1 = adj_offset
-            offsets.append(lvl1)
+            offsets.appendleft(lvl1)
 
         elif offset < lvl3_max:
 
             # calculate lvl3 offset
             adj_offset = offset - lvl2_max
             lvl3 = adj_offset // address_per_block**2
-            offsets.append(lvl3)
+            offsets.appendleft(lvl3)
 
             # calculate lvl2 offset
             adj_offset = adj_offset - (address_per_block**2 * lvl3)
             lvl2 = adj_offset // address_per_block
-            offsets.append(lvl2)
+            offsets.appendleft(lvl2)
 
             # calculate lvl1 offset
             adj_offset = adj_offset - (address_per_block * lvl2)
             lvl1 = adj_offset
-            offsets.append(lvl1)
+            offsets.appendleft(lvl1)
 
         return offsets
 
@@ -274,8 +274,6 @@ class INode:
         # add each layer of indirect max offset
         for x in range(indirect_lvl):
             max_offset += (block_size//address_size)**(x+1)
-
-        print(max_offset)
 
         return max_offset
 
