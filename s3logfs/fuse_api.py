@@ -1264,7 +1264,6 @@ class FuseApi(FUSELL):
         except KeyError:
 
             print("INode (", inode_id, ") not found in inode_map!")
-            self.reply_err(req, errno.EIO)
 
     def _checkpoint_if_necessary(self):
         current_time = int(time())

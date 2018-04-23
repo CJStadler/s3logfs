@@ -86,8 +86,8 @@ class INode:
 
         address_size = BlockAddress.get_address_size()
         for i in range(klass.NUMBER_OF_DIRECT_BLOCKS):
-            offset = i * BlockAddress.STRUCT_SIZE
-            address_bytes = addresses_bytes[offset:offset + BlockAddress.STRUCT_SIZE]
+            offset = i * BlockAddress.get_address_size()
+            address_bytes = addresses_bytes[offset:offset + BlockAddress.get_address_size()]
             inode.block_addresses[i] = BlockAddress(address_bytes)
 
         # load indirect addresses
