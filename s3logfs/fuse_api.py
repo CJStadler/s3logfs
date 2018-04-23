@@ -20,6 +20,7 @@ from .fs import INode
 from .fs import BlockAddress
 from .fs import AddressBlock
 
+CONSOLE_OUTPUT = True
 
 class FuseApi(FUSELL):
 
@@ -45,7 +46,8 @@ class FuseApi(FUSELL):
     ### FUSE METHODS ###
 
     def destroy(self, userdata):
-        print('FS-DESTROY:', userdata)
+        if CONSOLE_OUTPUT:
+            print('FS-DESTROY:', userdata)
         """Clean up filesystem
 
         There's no reply to this method
@@ -54,7 +56,8 @@ class FuseApi(FUSELL):
         self._save_checkpoint()
 
     def lookup(self, req, parent, name):
-        print("FS-LOOKUP", req, parent, name)
+        if CONSOLE_OUTPUT:
+            print("FS-LOOKUP", req, parent, name)
 
         # verify parent inode exists in inode_map lookup
         if self._CR.inode_exists(parent):
@@ -91,7 +94,8 @@ class FuseApi(FUSELL):
             self.reply_err(req, errno.ENOENT)
 
     def forget(self, req, ino, nlookup):
-        print('FS-FORGET:', req, ino, nlookup)
+        if CONSOLE_OUTPUT:
+            print('FS-FORGET:', req, ino, nlookup)
 
         # removes inode form inode_map
         # this is done here because the inode must be
@@ -111,7 +115,8 @@ class FuseApi(FUSELL):
         self.reply_none(req)
 
     def getattr(self, req, ino, fi):
-        print("FS-GETATTR", req, ino, fi)
+        if CONSOLE_OUTPUT:
+            print("FS-GETATTR", req, ino, fi)
 
         # verify inode exists
         if self._CR.inode_exists(ino):
@@ -133,7 +138,8 @@ class FuseApi(FUSELL):
 
 
     def setattr(self, req, ino, attr, to_set, fi):
-        print('FS-SETATTR:', req, ino, attr, to_set, fi)
+        if CONSOLE_OUTPUT:
+            print('FS-SETATTR:', req, ino, attr, to_set, fi)
 
         # verify inode exists
         if self._CR.inode_exists(ino):
@@ -194,7 +200,8 @@ class FuseApi(FUSELL):
 
 
     def mknod(self, req, parent, name, mode, rdev):
-        print('FS-MKNOD:', req, parent, name,  mode, rdev)
+        if CONSOLE_OUTPUT:
+            print('FS-MKNOD:', req, parent, name,  mode, rdev)
 
         # verify inode exists
         if self._CR.inode_exists(parent):
@@ -264,7 +271,8 @@ class FuseApi(FUSELL):
 
 
     def mkdir(self, req, parent, name, mode):
-        print('FS-MKDIR:', parent, name, mode)
+        if CONSOLE_OUTPUT:
+            print('FS-MKDIR:', parent, name, mode)
 
         # verify inode exists
         if self._CR.inode_exists(parent):
@@ -337,7 +345,8 @@ class FuseApi(FUSELL):
             self.reply_err(req, errno.EIO)
 
     def unlink(self, req, parent, name):
-        print('FS-UNLINK:', req, parent, name)
+        if CONSOLE_OUTPUT:
+            print('FS-UNLINK:', req, parent, name)
 
         # verify inode exists
         if self._CR.inode_exists(parent):
@@ -370,7 +379,8 @@ class FuseApi(FUSELL):
             self.reply_err(req, errno.EIO)
 
     def rmdir(self, req, parent, name):
-        print("FS-RMDIR:", req, parent, name)
+        if CONSOLE_OUTPUT:
+            print("FS-RMDIR:", req, parent, name)
 
         # verify inode exists
         if self._CR.inode_exists(parent):
@@ -398,7 +408,8 @@ class FuseApi(FUSELL):
             self.reply_err(req, errno.EIO)
 
     def rename(self, req, parent, name, newparent, newname):
-        print('FS-RENAME:', req, parent, name, newparent, newname)
+        if CONSOLE_OUTPUT:
+            print('FS-RENAME:', req, parent, name, newparent, newname)
 
         # load current directory
         current_directory = self.load_directory(parent)
@@ -441,7 +452,8 @@ class FuseApi(FUSELL):
 
 
     def link(self, req, ino, newparent, newname):
-        print('FS-LINK:', req, ino, newparent, newname)
+        if CONSOLE_OUTPUT:
+            print('FS-LINK:', req, ino, newparent, newname)
 
         # 1. LOAD DIRECTORY
         directory = self.load_directory(newparent)
@@ -483,7 +495,8 @@ class FuseApi(FUSELL):
             return dict()
 
     def open(self, req, ino, fi):
-        print('FS-OPEN:', req, ino)
+        if CONSOLE_OUTPUT:
+            print('FS-OPEN:', req, ino)
 
         # verify inode exists, return open reply or error
         if self._CR.inode_exists(ino):
@@ -503,7 +516,8 @@ class FuseApi(FUSELL):
             self.reply_err(req, errno.EIO)
 
     def read(self, req, ino, size, off, fi):
-        print('FS-READ:', req, ino, size, off)
+        if CONSOLE_OUTPUT:
+            print('FS-READ:', req, ino, size, off)
 
         # verify inode exists
         if self._CR.inode_exists(ino):
@@ -526,7 +540,8 @@ class FuseApi(FUSELL):
             self.reply_err(req, errno.ENOENT)
 
     def write(self, req, ino, buf, off, fi):
-        print('FS-WRITE:', req, ino, len(buf), off)
+        if CONSOLE_OUTPUT:
+            print('FS-WRITE:', req, ino, len(buf), off)
 
         # verify inode exists
         if self._CR.inode_exists(ino):
@@ -548,7 +563,8 @@ class FuseApi(FUSELL):
             self.reply_err(req, errno.ENOENT)
 
     def readdir(self, req, ino, size, off, fi):
-        print('FS-READDIR:', req, ino, size, off, fi)
+        if CONSOLE_OUTPUT:
+            print('FS-READDIR:', req, ino, size, off, fi)
 
         # 1. LOAD DIRECTORY INODE
         directory = self.load_directory(ino)
@@ -579,7 +595,8 @@ class FuseApi(FUSELL):
         self.reply_readdir(req, size, off, entries)
 
     def symlink(self, req, link, parent, name):
-        print('FS-SYMLINK:', req, link, parent, name)
+        if CONSOLE_OUTPUT:
+            print('FS-SYMLINK:', req, link, parent, name)
 
         # create symlink inode
         link_node = INode()
@@ -631,7 +648,8 @@ class FuseApi(FUSELL):
 
 
     def readlink(self, req, ino):
-        print('FS-READLINK::', req, ino)
+        if CONSOLE_OUTPUT:
+            print('FS-READLINK::', req, ino)
 
         # load inode
         inode = self.load_inode(ino)
@@ -648,7 +666,8 @@ class FuseApi(FUSELL):
     # ************
 
     def release(self, req, ino, fi):
-        print('FS-RELEASE:', req, ino, fi)
+        if CONSOLE_OUTPUT:
+            print('FS-RELEASE:', req, ino, fi)
 
         # for the type of file system we have , we won't need to implement
         # this function beyond checking if a checkpoint is necessary.
@@ -659,13 +678,15 @@ class FuseApi(FUSELL):
         self.reply_err(req, 0)
 
     def flush(self, req, ino, fi):
-        print('FS-FLUSH:', req, ino, fi)
+        if CONSOLE_OUTPUT:
+            print('FS-FLUSH:', req, ino, fi)
 
         # error because its not implemented
         self.reply_err(req, errno.ENOSYS)
 
     def statfs(self, req, ino):
-        print('statfs:', req, ino)
+        if CONSOLE_OUTPUT:
+            print('statfs:', req, ino)
 
         stat_fs_info = dict()
         stat_fs_info["f_bavail"] = 0
@@ -686,25 +707,29 @@ class FuseApi(FUSELL):
         self.reply_err(req, errno.ENOSYS)
 
     def listxattr(self, req, ino, size):
-        print('listxattr:', req, ino, size)
+        if CONSOLE_OUTPUT:
+            print('listxattr:', req, ino, size)
 
         # error because its not implemented
         self.reply_err(req, errno.ENOTSUP)
 
     def setxattr(self, req, ino, name, value, size, flags):
-        print('setxattr:', req, ino, name, value, size, flags)
+        if CONSOLE_OUTPUT:
+            print('setxattr:', req, ino, name, value, size, flags)
 
         # error because its not implemented
         self.reply_err(req, errno.ENOTSUP)
 
     def getxattr(self, req, ino, name, size):
-        print('getxattr:', req, ino, name, size)
+        if CONSOLE_OUTPUT:
+            print('getxattr:', req, ino, name, size)
 
         # error because its not implemented
         self.reply_err(req, errno.ENOTSUP)
 
     def removexattr(self, req, ino, name):
-        print('removexattr:', req, ino, name)
+        if CONSOLE_OUTPUT:
+            print('removexattr:', req, ino, name)
 
         # error because its not implemented
         self.reply_err(req, errno.ENOSYS)
@@ -816,8 +841,10 @@ class FuseApi(FUSELL):
             # calcluate number of block units per address at this level 
             block_units = (block_size // address_size)**len(offsets)
 
+            next_offset = offsets[len(offsets)-1]
+
             # calculate number of addresess to read, limited to max 
-            read_count = math.ceil((start_offset + block_count) / block_units)
+            read_count = math.ceil((next_offset + block_count) / block_units)
             if read_count > (indirect_ab.get_max_offset() - start_offset):
                 read_count = indirect_ab.get_max_offset() - start_offset
 
