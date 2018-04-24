@@ -13,7 +13,7 @@ import pickle
 class INode:
 
     ST_BLOCKS_SIZE = 512  # only used to calculate st_blocks, not related inode.block_size
-    NUMBER_OF_DIRECT_BLOCKS = 350
+    NUMBER_OF_DIRECT_BLOCKS = 16
     STRUCT_FORMAT = 'QQQIIIIIIIddd' # Plus block addresses
     STRUCT = Struct(STRUCT_FORMAT)
 
