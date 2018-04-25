@@ -469,7 +469,7 @@ class FuseApi(FUSELL):
         directory.children[newname] = ino
 
         # - increase directory hard links
-        directory.hard_links += 1
+#        directory.hard_links += 1
 
         # 2. LOAD TARGET FILE
         target_file = self.load_inode(ino)

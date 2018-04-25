@@ -2,7 +2,8 @@
 Team: Rene Adaimi, Brian Hayes, Christopher Stadler
 
 Description:
-  Implementation of a log-structured like file system on top of Amazon S3 storage in user space via FUSE.
+  Implementation of a log-structured like file system on top of Amazon S3
+  storage in user space via FUSE.
 
 File System Requirements:
  - FUSE 3.5.X
