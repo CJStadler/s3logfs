@@ -3,5 +3,6 @@ ioengine=sync
 rw=read
 direct=1
 sync=1
-size=64K
+size=1M
 fallocate=none
+loops=5

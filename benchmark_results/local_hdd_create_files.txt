@@ -1,0 +1,27 @@
+create-files: (g=0): rw=write, bs=4K-4K/4K-4K/4K-4K, ioengine=sync, iodepth=1
+fio-2.16
+Starting 1 process
+
+create-files: (groupid=0, jobs=1): err= 0: pid=7460: Mon Apr 23 11:39:28 2018
+  write: io=3200.0KB, bw=85692B/s, iops=20, runt= 38239msec
+    clat (msec): min=33, max=211, avg=47.49, stdev=17.81
+     lat (msec): min=33, max=211, avg=47.49, stdev=17.81
+    clat percentiles (msec):
+     |  1.00th=[   35],  5.00th=[   45], 10.00th=[   45], 20.00th=[   45],
+     | 30.00th=[   45], 40.00th=[   45], 50.00th=[   45], 60.00th=[   45],
+     | 70.00th=[   45], 80.00th=[   45], 90.00th=[   45], 95.00th=[   56],
+     | 99.00th=[  178], 99.50th=[  178], 99.90th=[  212], 99.95th=[  212],
+     | 99.99th=[  212]
+    lat (msec) : 50=94.12%, 100=3.88%, 250=2.00%
+  cpu          : usr=0.13%, sys=1.06%, ctx=2514, majf=0, minf=17
+  IO depths    : 1=100.0%, 2=0.0%, 4=0.0%, 8=0.0%, 16=0.0%, 32=0.0%, >=64=0.0%
+     submit    : 0=0.0%, 4=100.0%, 8=0.0%, 16=0.0%, 32=0.0%, 64=0.0%, >=64=0.0%
+     complete  : 0=0.0%, 4=100.0%, 8=0.0%, 16=0.0%, 32=0.0%, 64=0.0%, >=64=0.0%
+     issued    : total=r=0/w=800/d=0, short=r=0/w=0/d=0, drop=r=0/w=0/d=0
+     latency   : target=0, window=0, percentile=100.00%, depth=1
+
+Run status group 0 (all jobs):
+  WRITE: io=3200KB, aggrb=83KB/s, minb=83KB/s, maxb=83KB/s, mint=38239msec, maxt=38239msec
+
+Disk stats (read/write):
+  sda: ios=0/2428, merge=0/6043, ticks=0/37652, in_queue=37656, util=97.60%

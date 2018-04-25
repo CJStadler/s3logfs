@@ -1,0 +1,33 @@
+#!/usr/bin/env python3
+
+import argparse
+
+from pathlib import Path
+from os import system
+
+def main():
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument('jobs_directory',
+                        help='The directory containing job files.')
+    parser.add_argument('test_directory',
+                        help='The directory to run tests in.')
+    parser.add_argument('results_directory',
+                        help='The directory to place results in.')
+    parser.add_argument('results_prefix',
+                        help='Prefix each results file with this.')
+
+    args = parser.parse_args()
+
+    jobs_directory = Path(args.jobs_directory)
+    results_directory = Path(args.results_directory)
+
+    for job_file in jobs_directory.iterdir():
+        out_file = results_directory / (args.results_prefix + job_file.stem + '.txt')
+        command = 'fio --directory {} {} > {}'.format(args.test_directory, job_file, out_file)
+        print(command)
+        system(command)
+        system('rm {}/*'.format(Path(args.test_directory)))
+
+if __name__ == '__main__':
+    main()

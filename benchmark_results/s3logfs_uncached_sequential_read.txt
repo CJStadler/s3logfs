@@ -1,0 +1,27 @@
+sequential-read: (g=0): rw=read, bs=4K-4K/4K-4K/4K-4K, ioengine=sync, iodepth=1
+fio-2.2.10
+Starting 1 process
+sequential-read: Laying out IO file(s) (1 file(s) / 1MB)
+
+sequential-read: (groupid=0, jobs=1): err= 0: pid=16085: Tue Apr 24 16:02:34 2018
+  read : io=5120.0KB, bw=151161B/s, iops=36, runt= 34684msec
+    clat (usec): min=142, max=383534, avg=26989.38, stdev=28387.14
+     lat (usec): min=142, max=383535, avg=26990.10, stdev=28387.24
+    clat percentiles (usec):
+     |  1.00th=[  149],  5.00th=[  149], 10.00th=[  151], 20.00th=[  153],
+     | 30.00th=[  171], 40.00th=[29824], 50.00th=[30848], 60.00th=[31616],
+     | 70.00th=[33024], 80.00th=[35072], 90.00th=[39680], 95.00th=[61184],
+     | 99.00th=[116224], 99.50th=[152576], 99.90th=[342016], 99.95th=[382976],
+     | 99.99th=[382976]
+    bw (KB  /s): min=   49, max=  131, per=68.94%, avg=101.34, stdev=17.19
+    lat (usec) : 250=31.25%
+    lat (msec) : 50=62.58%, 100=3.67%, 250=2.34%, 500=0.16%
+  cpu          : usr=0.15%, sys=0.00%, ctx=1294, majf=0, minf=10
+  IO depths    : 1=100.0%, 2=0.0%, 4=0.0%, 8=0.0%, 16=0.0%, 32=0.0%, >=64=0.0%
+     submit    : 0=0.0%, 4=100.0%, 8=0.0%, 16=0.0%, 32=0.0%, 64=0.0%, >=64=0.0%
+     complete  : 0=0.0%, 4=100.0%, 8=0.0%, 16=0.0%, 32=0.0%, 64=0.0%, >=64=0.0%
+     issued    : total=r=1280/w=0/d=0, short=r=0/w=0/d=0, drop=r=0/w=0/d=0
+     latency   : target=0, window=0, percentile=100.00%, depth=1
+
+Run status group 0 (all jobs):
+   READ: io=5120KB, aggrb=147KB/s, minb=147KB/s, maxb=147KB/s, mint=34684msec, maxt=34684msec

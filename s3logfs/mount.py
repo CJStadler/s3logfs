@@ -30,14 +30,6 @@ def main():
 
     bucket_name = args.bucket
 
-    # for testing, if "TEST" is passed as the bucket name
-    # a new bucket will be created with the current
-    # datetime as the bucket name, otherwise it will be
-    # named with what is passed as an argument
-    if (bucket_name == "TEST"):
-        bucket_name = datetime.now()
-        print("DT: ", str(bucket_name))
-
     if args.local_directory:
         s3_bucket = LocalDirectory(bucket_name, parent_directory=args.local_directory)
     else:

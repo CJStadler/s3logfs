@@ -1,0 +1,28 @@
+rand-write: (g=0): rw=randwrite, bs=4K-4K/4K-4K/4K-4K, ioengine=sync, iodepth=1
+fio-2.2.10
+Starting 1 process
+rand-write: Laying out IO file(s) (1 file(s) / 1MB)
+
+rand-write: (groupid=0, jobs=1): err= 0: pid=15992: Tue Apr 24 15:41:54 2018
+  write: io=5120.0KB, bw=11213B/s, iops=2, runt=467564msec
+    clat (usec): min=453, max=1682.2K, avg=365271.51, stdev=119479.74
+     lat (usec): min=454, max=1682.2K, avg=365272.48, stdev=119479.72
+    clat percentiles (msec):
+     |  1.00th=[  126],  5.00th=[  194], 10.00th=[  241], 20.00th=[  330],
+     | 30.00th=[  343], 40.00th=[  355], 50.00th=[  363], 60.00th=[  371],
+     | 70.00th=[  383], 80.00th=[  404], 90.00th=[  445], 95.00th=[  498],
+     | 99.00th=[  807], 99.50th=[ 1172], 99.90th=[ 1647], 99.95th=[ 1680],
+     | 99.99th=[ 1680]
+    bw (KB  /s): min=    3, max=   47, per=100.00%, avg=10.77, stdev= 3.39
+    lat (usec) : 500=0.08%
+    lat (msec) : 100=0.08%, 250=10.23%, 500=84.77%, 750=3.83%, 1000=0.31%
+    lat (msec) : 2000=0.70%
+  cpu          : usr=0.01%, sys=0.01%, ctx=2578, majf=0, minf=9
+  IO depths    : 1=100.0%, 2=0.0%, 4=0.0%, 8=0.0%, 16=0.0%, 32=0.0%, >=64=0.0%
+     submit    : 0=0.0%, 4=100.0%, 8=0.0%, 16=0.0%, 32=0.0%, 64=0.0%, >=64=0.0%
+     complete  : 0=0.0%, 4=100.0%, 8=0.0%, 16=0.0%, 32=0.0%, 64=0.0%, >=64=0.0%
+     issued    : total=r=0/w=1280/d=0, short=r=0/w=0/d=0, drop=r=0/w=0/d=0
+     latency   : target=0, window=0, percentile=100.00%, depth=1
+
+Run status group 0 (all jobs):
+  WRITE: io=5120KB, aggrb=10KB/s, minb=10KB/s, maxb=10KB/s, mint=467564msec, maxt=467564msec
