@@ -107,7 +107,13 @@ class FuseApi(FUSELL):
         #     in the 2nd terminal the directory will no longer show up. Once you
         #     leave the directory on the 1st terminal, forget is called and
         #     deletes the inode
-#        del self._CR.inode_map[ino]
+
+        # load inode
+        inode = self.load_inode(ino)
+        
+        # if hard links == 0 then remove inode
+        if inode.hard_links < 1:
+            del self._CR.inode_map[ino]
 
         # CHECKPOINT
         self._checkpoint_if_necessary()
@@ -238,7 +244,7 @@ class FuseApi(FUSELL):
 
             # 3. update parent <> new child relationship
             # - increment hard_links by 1
-            directory.hard_links += 1
+#            directory.hard_links += 1
 
             # - add new node to directory
             directory.children[name] = new_node.inode_number
@@ -302,7 +308,7 @@ class FuseApi(FUSELL):
             newdir.parent = parent
 
             # - set hard links to 2 (for "." and "..")
-            newdir.hard_links = 2
+            newdir.hard_links = 1
 
             # - set time attributes
             now = time()
@@ -312,7 +318,8 @@ class FuseApi(FUSELL):
 
             # 3. update parent <> child relationship
             # - increment hard_links by 1
-            current_directory.hard_links += 1
+#            current_directory.hard_links += 1
+
             # - add new directory to children
             current_directory.children[name] = newdir.inode_number
 
